@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verificador de Números - Institución</title>
+    <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+    <!-- Login Simple -->
+    <div id="loginContainer" class="container">
+        <div class="login-box">
+            <div class="logo">
+                <h2>🏢 Institución Gubernamental</h2>
+                <p>Sistema de Verificación de Números Telefónicos</p>
+            </div>
+            
+            <div class="login-form">
+                <h3>🔒 Acceso al Sistema</h3>
+                <p>Ingresa tus credenciales institucionales:</p>
+                
+                <div class="input-group">
+                    <label>Correo Institucional:</label>
+                    <input type="email" id="emailInput" placeholder="tu.correo@institucion.gob.gt">
+                </div>
+                
+                <div class="input-group">
+                    <label>Contraseña:</label>
+                    <input type="password" id="passwordInput" placeholder="Tu contraseña">
+                </div>
+                
+                <button onclick="login()" class="btn-primary">Ingresar al Sistema</button>
+                <div id="loginError" class="error-message"></div>
+                
+                <div class="demo-accounts">
+                    <p><strong>Cuentas de prueba:</strong></p>
+                    <p>admin@institucion.gt / admin123</p>
+                    <p>usuario@institucion.gt / user123</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Aplicación Principal -->
+    <div id="appContainer" class="container hidden">
+        <header class="app-header">
+            <div class="header-info">
+                <h1>📱 Verificador de Números Telefónicos</h1>
+                <p>Usuario: <span id="currentUser"></span> | 
+                   <button onclick="logout()" class="btn-logout">Cerrar Sesión</button>
+                </p>
+            </div>
+        </header>
+
+        <main class="app-main">
+            <div class="input-section">
+                <div class="card">
+                    <h3>📋 Ingreso de Números</h3>
+                    <div class="input-group">
+                        <label><strong>Números a verificar (uno por línea):</strong></label>
+                        <textarea id="numbersInput" rows="8" placeholder="Ejemplo:
++502 5555-5555
++502 4444-4444
++502 3333-3333"></textarea>
+                        <div class="input-info">
+                            <span id="numberCount">0 números listos</span>
+                            <span>Formato: +502 XXXXXXXX</span>
+                        </div>
+                    </div>
+                    
+                    <button onclick="processNumbers()" id="processBtn" class="btn-process">Iniciar Verificación</button>
+                </div>
+            </div>
+
+            <div class="results-section">
+                <div class="card">
+                    <h3>📊 Resultados de Verificación</h3>
+                    <div class="results-header">
+                        <span>Total: <span id="totalCount">0</span></span>
+                        <span>Exitosos: <span id="successCount">0</span></span>
+                        <span>Fallidos: <span id="errorCount">0</span></span>
+                        <button onclick="exportResults()" class="btn-export">📥 Exportar Resultados</button>
+                    </div>
+                    
+                    <div id="resultsList" class="results-list">
+                        <div class="empty-state">
+                            <p>Los resultados aparecerán aquí después de la verificación</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="assets/js/app.js"></script>
+</body>
+</html>
