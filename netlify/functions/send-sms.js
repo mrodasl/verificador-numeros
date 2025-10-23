@@ -112,7 +112,7 @@ exports.handler = async function(event, context) {
         const client = new Twilio(TWILIO_CONFIG.accountSid, TWILIO_CONFIG.authToken);
 
         // Mensaje de verificación
-        const verificationMessage = 'Hola. Mensaje de verificación institucional. Por favor ignore este mensaje.';
+        const verificationMessage = 'Hola. Regresaste hace poco a Guatemala y deseas apoyo, contactanos al WhatsApp: https://wa.me/50239359960 ';
 
         // Enviar SMS
         const message = await client.messages.create({
@@ -175,3 +175,4 @@ exports.handler = async function(event, context) {
         };
     }
 };
+
