@@ -1,33 +1,29 @@
-// Configuración de la aplicación
+// ========== SISTEMA MEJORADO DE USUARIOS ==========
+
+// Configuración
 const APP_CONFIG = {
     maxNumbersPerBatch: 50,
-    delayBetweenRequests: 500 // ms
+    delayBetweenRequests: 500,
+    sessionTimeout: 30 // minutos
 };
 
 // Estado de la aplicación
 let appState = {
     currentUser: null,
     results: [],
-    isProcessing: false
+    isProcessing: false,
+    inactivityTimer: null
 };
 
-// Usuarios autorizados (en producción, esto vendría de una base de datos)
-const AUTHORIZED_USERS = [
-    { 
-        email: 'admin@institucion.gt', 
-        password: 'admin123', 
-        name: 'Administrador Principal',
-        role: 'admin',
-        department: 'TI'
-    },
-    { 
-        email: 'usuario@institucion.gt', 
-        password: 'user123', 
-        name: 'Usuario General',
-        role: 'user',
-        department: 'Operaciones'
-    }
-];
+// Usuario SUPER ADMIN por defecto (tú)
+const SUPER_ADMIN = {
+    email: 'mrodas@iom.int',
+    password: '130028',
+    name: 'Administrador Principal',
+    role: 'superadmin',
+    department: 'TI',
+    createdAt: new Date().toISOString()
+};
 
 // Inicializar la aplicación cuando se carga la página
 document.addEventListener('DOMContentLoaded', function() {
@@ -35,15 +31,37 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function initializeApp() {
+    // Cargar usuarios desde localStorage o crear estructura inicial
+    initializeUsers();
+    
     // Verificar si hay una sesión activa
     const savedUser = localStorage.getItem('currentUser');
     if (savedUser) {
         appState.currentUser = JSON.parse(savedUser);
+        startInactivityTimer();
         showApp();
     }
     
     // Configurar event listeners
     setupEventListeners();
+}
+
+function initializeUsers() {
+    const storedUsers = localStorage.getItem('platformUsers');
+    if (!storedUsers) {
+        // Primera vez - crear estructura con super admin
+        const initialUsers = [SUPER_ADMIN];
+        localStorage.setItem('platformUsers', JSON.stringify(initialUsers));
+    }
+}
+
+function getUsers() {
+    const storedUsers = localStorage.getItem('platformUsers');
+    return storedUsers ? JSON.parse(storedUsers) : [SUPER_ADMIN];
+}
+
+function saveUsers(users) {
+    localStorage.setItem('platformUsers', JSON.stringify(users));
 }
 
 function setupEventListeners() {
@@ -60,25 +78,27 @@ function setupEventListeners() {
     document.getElementById('numbersInput').addEventListener('input', updateNumberCount);
 }
 
-// ========== FUNCIONES DE AUTENTICACIÓN ==========
+// ========== FUNCIONES DE AUTENTICACIÓN MEJORADAS ==========
 
 function login() {
     const email = document.getElementById('emailInput').value.trim();
     const password = document.getElementById('passwordInput').value;
-    
+
     // Validaciones básicas
     if (!email || !password) {
         showError('Por favor completa todos los campos');
         return;
     }
-    
-    // Buscar usuario
-    const user = AUTHORIZED_USERS.find(u => u.email === email && u.password === password);
+
+    // Buscar usuario en la base de datos
+    const users = getUsers();
+    const user = users.find(u => u.email === email && u.password === password);
     
     if (user) {
         // Login exitoso
         appState.currentUser = user;
         localStorage.setItem('currentUser', JSON.stringify(user));
+        startInactivityTimer();
         showApp();
         clearError();
     } else {
@@ -87,22 +107,221 @@ function login() {
 }
 
 function logout() {
+    clearInactivityTimer();
     appState.currentUser = null;
     localStorage.removeItem('currentUser');
-    location.reload(); // Recargar para mostrar login
+    showNotification('Sesión cerrada correctamente', 'success');
+    setTimeout(() => location.reload(), 1000);
 }
+
+// ========== SISTEMA DE INACTIVIDAD ==========
+
+function startInactivityTimer() {
+    // Limpiar timer existente
+    clearInactivityTimer();
+    
+    // Obtener timeout configurado
+    const timeoutMinutes = parseInt(localStorage.getItem('sessionTimeout') || APP_CONFIG.sessionTimeout);
+    const timeoutMs = timeoutMinutes * 60 * 1000; // Convertir a milisegundos
+    
+    // Configurar eventos que resetearán el timer
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+    events.forEach(event => {
+        document.addEventListener(event, resetInactivityTimer, true);
+    });
+    
+    // Iniciar timer
+    appState.inactivityTimer = setTimeout(() => {
+        showNotification(`Sesión cerrada por inactividad (${timeoutMinutes} minutos)`, 'warning');
+        logout();
+    }, timeoutMs);
+}
+
+function resetInactivityTimer() {
+    if (appState.currentUser) {
+        startInactivityTimer();
+    }
+}
+
+function clearInactivityTimer() {
+    if (appState.inactivityTimer) {
+        clearTimeout(appState.inactivityTimer);
+        appState.inactivityTimer = null;
+    }
+}
+
+function updateSessionTimeout() {
+    const timeoutInput = document.getElementById('sessionTimeout');
+    const newTimeout = parseInt(timeoutInput.value);
+    
+    if (newTimeout >= 5 && newTimeout <= 120) {
+        localStorage.setItem('sessionTimeout', newTimeout.toString());
+        startInactivityTimer(); // Reiniciar con nuevo tiempo
+        showNotification(`Timeout de sesión actualizado a ${newTimeout} minutos`, 'success');
+    } else {
+        showError('El tiempo debe estar entre 5 y 120 minutos');
+    }
+}
+
+// ========== PANEL DE ADMINISTRACIÓN ==========
+
+function showAdminPanel() {
+    // Ocultar aplicación principal
+    document.getElementById('appContainer').classList.add('hidden');
+    // Mostrar panel de admin
+    document.getElementById('adminPanel').classList.remove('hidden');
+    // Actualizar nombre de usuario en el header del admin
+    document.getElementById('adminCurrentUser').textContent = appState.currentUser.name;
+    // Cargar lista de usuarios
+    loadUsersList();
+    
+    // Cargar configuración actual
+    const currentTimeout = localStorage.getItem('sessionTimeout') || APP_CONFIG.sessionTimeout;
+    document.getElementById('sessionTimeout').value = currentTimeout;
+}
+
+function hideAdminPanel() {
+    document.getElementById('adminPanel').classList.add('hidden');
+    document.getElementById('appContainer').classList.remove('hidden');
+}
+
+function loadUsersList() {
+    const users = getUsers();
+    const usersList = document.getElementById('usersList');
+    
+    usersList.innerHTML = users.map(user => `
+        <div class="user-item ${user.role === 'superadmin' ? 'superadmin' : ''}">
+            <div class="user-info">
+                <strong>${user.name}</strong>
+                <span class="user-email">${user.email}</span>
+                <span class="user-role">${getRoleBadge(user.role)}</span>
+                <span class="user-created">Creado: ${new Date(user.createdAt).toLocaleDateString()}</span>
+            </div>
+            <div class="user-actions">
+                ${user.role !== 'superadmin' ? `
+                    <button onclick="deleteUser('${user.email}')" class="btn-danger">Eliminar</button>
+                ` : '<em>Super Admin</em>'}
+            </div>
+        </div>
+    `).join('');
+}
+
+function getRoleBadge(role) {
+    const badges = {
+        'superadmin': '<span class="badge superadmin-badge">Super Admin</span>',
+        'admin': '<span class="badge admin-badge">Admin</span>',
+        'user': '<span class="badge user-badge">Usuario</span>'
+    };
+    return badges[role] || badges.user;
+}
+
+function addNewUser() {
+    const email = document.getElementById('newUserEmail').value.trim();
+    const password = document.getElementById('newUserPassword').value;
+    const name = document.getElementById('newUserName').value.trim();
+    const role = document.getElementById('newUserRole').value;
+
+    // Validaciones
+    if (!email || !password || !name) {
+        showError('Todos los campos son requeridos');
+        return;
+    }
+
+    if (!email.includes('@')) {
+        showError('Por favor ingresa un correo válido');
+        return;
+    }
+
+    // Verificar que el usuario no exista
+    const users = getUsers();
+    if (users.find(u => u.email === email)) {
+        showError('Este correo ya está registrado');
+        return;
+    }
+
+    // Crear nuevo usuario
+    const newUser = {
+        email: email,
+        password: password,
+        name: name,
+        role: role,
+        department: 'Institución',
+        createdAt: new Date().toISOString()
+    };
+
+    users.push(newUser);
+    saveUsers(users);
+    
+    // Limpiar formulario y actualizar lista
+    document.getElementById('newUserEmail').value = '';
+    document.getElementById('newUserPassword').value = '';
+    document.getElementById('newUserName').value = '';
+    
+    showNotification('Usuario agregado correctamente', 'success');
+    loadUsersList();
+}
+
+function deleteUser(email) {
+    if (email === 'mrodas@iom.int') {
+        showError('No se puede eliminar al Super Administrador');
+        return;
+    }
+
+    if (confirm(`¿Estás seguro de que quieres eliminar al usuario ${email}?`)) {
+        const users = getUsers();
+        const filteredUsers = users.filter(u => u.email !== email);
+        saveUsers(filteredUsers);
+        showNotification('Usuario eliminado correctamente', 'success');
+        loadUsersList();
+    }
+}
+
+// ========== FUNCIONES DE INTERFAZ MEJORADAS ==========
 
 function showApp() {
     document.getElementById('loginContainer').classList.add('hidden');
     document.getElementById('appContainer').classList.remove('hidden');
     document.getElementById('currentUser').textContent = appState.currentUser.name;
     
+    // Mostrar botón de admin si es admin o superadmin
+    if (appState.currentUser.role === 'admin' || appState.currentUser.role === 'superadmin') {
+        document.getElementById('adminBtn').classList.remove('hidden');
+    }
+    
     // Limpiar campos del login
     document.getElementById('emailInput').value = '';
     document.getElementById('passwordInput').value = '';
 }
 
-// ========== FUNCIONES DE PROCESAMIENTO ==========
+function showNotification(message, type = 'info') {
+    // Crear notificación temporal
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.textContent = message;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-eliminar después de 5 segundos
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+        }
+    }, 5000);
+}
+
+function showError(message) {
+    const errorDiv = document.getElementById('loginError');
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+}
+
+function clearError() {
+    const errorDiv = document.getElementById('loginError');
+    errorDiv.textContent = '';
+    errorDiv.style.display = 'none';
+}
+
+// ========== FUNCIONES DE PROCESAMIENTO DE NÚMEROS ==========
 
 function updateNumberCount() {
     const input = document.getElementById('numbersInput').value;
@@ -208,7 +427,8 @@ async function processNumbers() {
                 success: response.success,
                 messageSid: response.messageSid,
                 error: response.error,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                user: appState.currentUser.email
             });
             
         } catch (error) {
@@ -225,7 +445,8 @@ async function processNumbers() {
                 number: number,
                 success: false,
                 error: error.message,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                user: appState.currentUser.email
             });
         }
         
@@ -330,7 +551,7 @@ function exportResults() {
         const messageSid = result.messageSid || 'N/A';
         const error = result.error ? `"${result.error.replace(/"/g, '""')}"` : 'N/A';
         
-        csv += `"${result.number}",${estado},${messageSid},${error},${result.timestamp},"${appState.currentUser.email}"\n`;
+        csv += `"${result.number}",${estado},${messageSid},${error},${result.timestamp},"${result.user}"\n`;
     });
     
     // Descargar archivo
@@ -347,28 +568,19 @@ function exportResults() {
     document.body.removeChild(link);
 }
 
-// ========== FUNCIONES DE UTILIDAD ==========
-
-function showError(message) {
-    const errorDiv = document.getElementById('loginError');
-    errorDiv.textContent = message;
-    errorDiv.style.display = 'block';
-}
-
-function clearError() {
-    const errorDiv = document.getElementById('loginError');
-    errorDiv.textContent = '';
-    errorDiv.style.display = 'none';
-}
-
 // Manejo de errores global
 window.addEventListener('error', function(e) {
     console.error('Error global:', e.error);
 });
 
-// Exportar para uso global (si es necesario)
+// Exportar para uso global
 window.appState = appState;
 window.processNumbers = processNumbers;
 window.exportResults = exportResults;
 window.login = login;
 window.logout = logout;
+window.showAdminPanel = showAdminPanel;
+window.hideAdminPanel = hideAdminPanel;
+window.addNewUser = addNewUser;
+window.deleteUser = deleteUser;
+window.updateSessionTimeout = updateSessionTimeout;
