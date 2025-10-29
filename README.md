@@ -28,20 +28,6 @@ Sistema web para verificación de números telefónicos mediante SMS, diseñado 
 - **Rol:** Super Administrador
 
 ## 📋 Estructura de Archivos
-verificador-numeros/
-├── index.html
-├── assets/
-│ ├── css/
-│ │ └── styles.css
-│ └── js/
-│ └── app.js
-├── netlify/
-│ └── functions/
-│ ├── send-sms.js
-│ └── sms-status.js
-├── netlify.toml
-├── package.json
-└── README.md
 
 
 ## 🚀 Instalación y Despliegue
@@ -124,3 +110,4 @@ https://wa.me/50239359960?text=Hola,%20quiero%20más%20información%20sobre%20lo
 ## 📞 Soporte
 
 Para problemas técnicos, contactar al administrador del sistema.
+
