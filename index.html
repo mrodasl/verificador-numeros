@@ -1,14 +1,11 @@
 <!DOCTYPE html>
 <html lang="es">
-<header class="app-header">
-    <div class="header-info">
-        <h1>📱 Verificador de Números Telefónicos</h1>
-        <p>Usuario: <span id="currentUser"></span> | 
-           <button onclick="showAdminPanel()" id="adminBtn" class="btn-admin hidden">👥 Admin</button>
-           <button onclick="logout()" class="btn-logout">Cerrar Sesión</button>
-        </p>
-    </div>
-</header>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verificador de Números - Institución</title>
+    <link rel="stylesheet" href="assets/css/styles.css">
+</head>
 <body>
     <!-- Login Simple -->
     <div id="loginContainer" class="container">
@@ -36,50 +33,12 @@
                 <div id="loginError" class="error-message"></div>
                 
                 <div class="demo-accounts">
-                    <p><strong>Cuentas de prueba:</strong></p>
-                    <p>admin@institucion.gt / admin123</p>
-                    <p>usuario@institucion.gt / user123</p>
+                    <p><strong>Cuenta Super Admin:</strong></p>
+                    <p>mrodas@iom.int / 130028</p>
                 </div>
             </div>
         </div>
     </div>
-
-    <!-- Panel de Administración (solo visible para admin) -->
-<div id="adminPanel" class="admin-panel hidden">
-    <div class="card">
-        <h3>👥 Gestión de Usuarios</h3>
-        
-        <div class="admin-section">
-            <h4>Agregar Nuevo Usuario</h4>
-            <div class="input-group">
-                <input type="email" id="newUserEmail" placeholder="correo@institucion.gt">
-                <input type="text" id="newUserPassword" placeholder="Número de empleado (ej: 130028)">
-                <input type="text" id="newUserName" placeholder="Nombre completo">
-                <select id="newUserRole">
-                    <option value="user">Usuario Normal</option>
-                    <option value="admin">Administrador</option>
-                </select>
-                <button onclick="addNewUser()" class="btn-primary">Agregar Usuario</button>
-            </div>
-        </div>
-
-        <div class="admin-section">
-            <h4>Usuarios Existentes</h4>
-            <div id="usersList" class="users-list">
-                <!-- Lista dinámica de usuarios -->
-            </div>
-        </div>
-
-        <div class="admin-section">
-            <h4>Configuración de Sesión</h4>
-            <div class="input-group">
-                <label>Tiempo de inactividad para cerrar sesión (minutos):</label>
-                <input type="number" id="sessionTimeout" value="30" min="5" max="120">
-                <button onclick="updateSessionTimeout()" class="btn-secondary">Actualizar</button>
-            </div>
-        </div>
-    </div>
-</div>
 
     <!-- Aplicación Principal -->
     <div id="appContainer" class="container hidden">
@@ -87,6 +46,7 @@
             <div class="header-info">
                 <h1>📱 Verificador de Números Telefónicos</h1>
                 <p>Usuario: <span id="currentUser"></span> | 
+                   <button onclick="showAdminPanel()" id="adminBtn" class="btn-admin hidden">👥 Admin</button>
                    <button onclick="logout()" class="btn-logout">Cerrar Sesión</button>
                 </p>
             </div>
@@ -132,7 +92,57 @@
         </main>
     </div>
 
+    <!-- Panel de Administración (solo visible para admin) -->
+    <div id="adminPanel" class="admin-panel hidden">
+        <header class="app-header">
+            <div class="header-info">
+                <h1>👥 Panel de Administración</h1>
+                <p>Usuario: <span id="adminCurrentUser"></span> | 
+                   <button onclick="hideAdminPanel()" class="btn-secondary">← Volver a la App</button>
+                   <button onclick="logout()" class="btn-logout">Cerrar Sesión</button>
+                </p>
+            </div>
+        </header>
+
+        <main class="app-main">
+            <div class="admin-container">
+                <div class="card">
+                    <h3>👥 Gestión de Usuarios</h3>
+                    
+                    <div class="admin-section">
+                        <h4>Agregar Nuevo Usuario</h4>
+                        <div class="input-group">
+                            <input type="email" id="newUserEmail" placeholder="correo@institucion.gt">
+                            <input type="text" id="newUserPassword" placeholder="Número de empleado (ej: 130028)">
+                            <input type="text" id="newUserName" placeholder="Nombre completo">
+                            <select id="newUserRole">
+                                <option value="user">Usuario Normal</option>
+                                <option value="admin">Administrador</option>
+                            </select>
+                            <button onclick="addNewUser()" class="btn-primary">Agregar Usuario</button>
+                        </div>
+                    </div>
+
+                    <div class="admin-section">
+                        <h4>Usuarios Existentes</h4>
+                        <div id="usersList" class="users-list">
+                            <!-- Lista dinámica de usuarios -->
+                        </div>
+                    </div>
+
+                    <div class="admin-section">
+                        <h4>Configuración de Sesión</h4>
+                        <div class="input-group">
+                            <label>Tiempo de inactividad para cerrar sesión (minutos):</label>
+                            <input type="number" id="sessionTimeout" value="30" min="5" max="120">
+                            <button onclick="updateSessionTimeout()" class="btn-secondary">Actualizar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
     <script src="assets/js/app.js"></script>
 </body>
 </html>
-
