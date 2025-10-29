@@ -150,12 +150,13 @@ function updateSessionTimeout() {
 }
 
 // ========== PANEL DE ADMINISTRACIÓN ==========
-
 function showAdminPanel() {
     // Ocultar aplicación principal
     document.getElementById('appContainer').classList.add('hidden');
     // Mostrar panel de admin
     document.getElementById('adminPanel').classList.remove('hidden');
+    // Actualizar nombre de usuario en el header del admin
+    document.getElementById('adminCurrentUser').textContent = appState.currentUser.name;
     // Cargar lista de usuarios
     loadUsersList();
     
@@ -168,6 +169,7 @@ function hideAdminPanel() {
     document.getElementById('adminPanel').classList.add('hidden');
     document.getElementById('appContainer').classList.remove('hidden');
 }
+
 
 function loadUsersList() {
     const users = getUsers();
@@ -307,3 +309,4 @@ function showNotification(message, type = 'info') {
 
 // El resto del código (processNumbers, sendVerificationRequest, etc.) permanece igual
 // ... [mantén todas las funciones de procesamiento de números que ya tenías]
+
