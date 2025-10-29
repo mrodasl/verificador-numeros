@@ -111,8 +111,13 @@ exports.handler = async function(event, context) {
         // Inicializar cliente Twilio
         const client = new Twilio(TWILIO_CONFIG.accountSid, TWILIO_CONFIG.authToken);
 
-        // Mensaje de verificación
-        const verificationMessage = 'Hola. Mensaje de verificación institucional. Por favor ignore este mensaje.';
+        // Mensaje de verificación MEJORADO
+        const verificationMessage = `¡Bienvenido a casa! 🌟 
+
+Si estás buscando oportunidades, apoyo o información para tu reintegración en Guatemala, estamos aquí para ayudarte.
+
+💬 Escríbenos directamente: 
+https://wa.me/50239359960?text=Hola,%20quiero%20más%20información%20sobre%20los%20servicios%20disponibles`;
 
         // Enviar SMS
         const message = await client.messages.create({
