@@ -1,22 +1,21 @@
 {
   "name": "verificador-numeros",
-"version": "1.0.0",
-  "description": "Sistema de verificación de números telefónicos usando Twilio",
+  "version": "1.0.0",
+  "description": "Sistema de verificación de números telefónicos para instituciones gubernamentales",
   "main": "index.html",
   "scripts": {
-    "build": "echo 'No build step required'",
-    "dev": "echo 'Run on Netlify'"
+    "build": "echo 'Build completo'"
   },
   "dependencies": {
     "twilio": "^4.0.0"
   },
-  "devDependencies": {},
   "keywords": [
-    "twilio",
+    "verificacion",
     "sms",
-    "verification",
-    "netlify"
+    "twilio",
+    "guatemala",
+    "institucion"
   ],
-  "author": "Tu Nombre",
+  "author": "Tu Institución",
   "license": "MIT"
 }
