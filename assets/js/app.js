@@ -31,15 +31,26 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function initializeApp() {
+    console.log('🔧 Inicializando aplicación...');
+    
     // Cargar usuarios desde localStorage o crear estructura inicial
     initializeUsers();
     
     // Verificar si hay una sesión activa
     const savedUser = localStorage.getItem('currentUser');
     if (savedUser) {
-        appState.currentUser = JSON.parse(savedUser);
-        startInactivityTimer();
-        showApp();
+        try {
+            appState.currentUser = JSON.parse(savedUser);
+            console.log('👤 Usuario en sesión:', appState.currentUser.email);
+            startInactivityTimer();
+            showApp();
+        } catch (error) {
+            console.error('Error parseando usuario guardado:', error);
+            localStorage.removeItem('currentUser');
+        }
+    } else {
+        console.log('🔐 No hay sesión activa');
+        showLogin();
     }
     
     // Configurar event listeners
@@ -48,41 +59,81 @@ function initializeApp() {
 
 function initializeUsers() {
     const storedUsers = localStorage.getItem('platformUsers');
+    console.log('📋 Inicializando usuarios...');
+    
     if (!storedUsers) {
         // Primera vez - crear estructura con super admin
+        console.log('👥 Creando usuario super admin por primera vez');
         const initialUsers = [SUPER_ADMIN];
         localStorage.setItem('platformUsers', JSON.stringify(initialUsers));
+        console.log('✅ Usuarios iniciales creados:', initialUsers);
+    } else {
+        console.log('✅ Usuarios ya existen en localStorage');
     }
 }
 
 function getUsers() {
     const storedUsers = localStorage.getItem('platformUsers');
-    return storedUsers ? JSON.parse(storedUsers) : [SUPER_ADMIN];
+    if (!storedUsers) {
+        console.log('⚠️ No hay usuarios en localStorage, retornando super admin');
+        return [SUPER_ADMIN];
+    }
+    
+    try {
+        const users = JSON.parse(storedUsers);
+        console.log(`📊 ${users.length} usuarios cargados`);
+        return users;
+    } catch (error) {
+        console.error('❌ Error parseando usuarios:', error);
+        return [SUPER_ADMIN];
+    }
 }
 
 function saveUsers(users) {
-    localStorage.setItem('platformUsers', JSON.stringify(users));
+    try {
+        localStorage.setItem('platformUsers', JSON.stringify(users));
+        console.log('💾 Usuarios guardados:', users.length);
+    } catch (error) {
+        console.error('❌ Error guardando usuarios:', error);
+    }
 }
 
 function setupEventListeners() {
-    // Enter en los campos de login
-    document.getElementById('emailInput').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') login();
-    });
+    console.log('🎯 Configurando event listeners...');
     
-    document.getElementById('passwordInput').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') login();
-    });
+    // Enter en los campos de login
+    const emailInput = document.getElementById('emailInput');
+    const passwordInput = document.getElementById('passwordInput');
+    
+    if (emailInput && passwordInput) {
+        emailInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') login();
+        });
+        
+        passwordInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') login();
+        });
+        console.log('✅ Event listeners de login configurados');
+    }
     
     // Contador de números en tiempo real
-    document.getElementById('numbersInput').addEventListener('input', updateNumberCount);
+    const numbersInput = document.getElementById('numbersInput');
+    if (numbersInput) {
+        numbersInput.addEventListener('input', updateNumberCount);
+        console.log('✅ Event listener de números configurado');
+    }
 }
 
 // ========== FUNCIONES DE AUTENTICACIÓN MEJORADAS ==========
 
 function login() {
+    console.log('🔐 Intentando login...');
+    
     const email = document.getElementById('emailInput').value.trim();
     const password = document.getElementById('passwordInput').value;
+
+    console.log('📧 Email ingresado:', email);
+    console.log('🔑 Contraseña ingresada:', password ? '***' : 'vacía');
 
     // Validaciones básicas
     if (!email || !password) {
@@ -92,26 +143,47 @@ function login() {
 
     // Buscar usuario en la base de datos
     const users = getUsers();
+    console.log('👥 Buscando en usuarios:', users.map(u => u.email));
+    
     const user = users.find(u => u.email === email && u.password === password);
     
     if (user) {
         // Login exitoso
+        console.log('✅ Login exitoso para:', user.email);
         appState.currentUser = user;
         localStorage.setItem('currentUser', JSON.stringify(user));
         startInactivityTimer();
         showApp();
         clearError();
     } else {
+        console.log('❌ Credenciales incorrectas');
         showError('Credenciales incorrectas. Por favor verifica tu correo y contraseña.');
     }
 }
 
 function logout() {
+    console.log('🚪 Cerrando sesión...');
     clearInactivityTimer();
     appState.currentUser = null;
     localStorage.removeItem('currentUser');
     showNotification('Sesión cerrada correctamente', 'success');
-    setTimeout(() => location.reload(), 1000);
+    setTimeout(() => {
+        showLogin();
+    }, 1000);
+}
+
+function showLogin() {
+    console.log('🔄 Mostrando pantalla de login...');
+    document.getElementById('loginContainer').classList.remove('hidden');
+    document.getElementById('appContainer').classList.add('hidden');
+    document.getElementById('adminPanel').classList.add('hidden');
+    
+    // Limpiar campos
+    const emailInput = document.getElementById('emailInput');
+    const passwordInput = document.getElementById('passwordInput');
+    if (emailInput) emailInput.value = '';
+    if (passwordInput) passwordInput.value = '';
+    clearError();
 }
 
 // ========== SISTEMA DE INACTIVIDAD ==========
@@ -124,6 +196,8 @@ function startInactivityTimer() {
     const timeoutMinutes = parseInt(localStorage.getItem('sessionTimeout') || APP_CONFIG.sessionTimeout);
     const timeoutMs = timeoutMinutes * 60 * 1000; // Convertir a milisegundos
     
+    console.log(`⏰ Timer de inactividad configurado: ${timeoutMinutes} minutos`);
+    
     // Configurar eventos que resetearán el timer
     const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
     events.forEach(event => {
@@ -132,6 +206,7 @@ function startInactivityTimer() {
     
     // Iniciar timer
     appState.inactivityTimer = setTimeout(() => {
+        console.log('⏰ Timer de inactividad expirado');
         showNotification(`Sesión cerrada por inactividad (${timeoutMinutes} minutos)`, 'warning');
         logout();
     }, timeoutMs);
@@ -147,6 +222,7 @@ function clearInactivityTimer() {
     if (appState.inactivityTimer) {
         clearTimeout(appState.inactivityTimer);
         appState.inactivityTimer = null;
+        console.log('⏰ Timer de inactividad limpiado');
     }
 }
 
@@ -166,6 +242,7 @@ function updateSessionTimeout() {
 // ========== PANEL DE ADMINISTRACIÓN ==========
 
 function showAdminPanel() {
+    console.log('👥 Mostrando panel de administración...');
     // Ocultar aplicación principal
     document.getElementById('appContainer').classList.add('hidden');
     // Mostrar panel de admin
@@ -181,6 +258,7 @@ function showAdminPanel() {
 }
 
 function hideAdminPanel() {
+    console.log('🔙 Volviendo a la aplicación principal...');
     document.getElementById('adminPanel').classList.add('hidden');
     document.getElementById('appContainer').classList.remove('hidden');
 }
@@ -188,6 +266,11 @@ function hideAdminPanel() {
 function loadUsersList() {
     const users = getUsers();
     const usersList = document.getElementById('usersList');
+    
+    if (!usersList) {
+        console.error('❌ Elemento usersList no encontrado');
+        return;
+    }
     
     usersList.innerHTML = users.map(user => `
         <div class="user-item ${user.role === 'superadmin' ? 'superadmin' : ''}">
@@ -204,6 +287,8 @@ function loadUsersList() {
             </div>
         </div>
     `).join('');
+    
+    console.log(`📋 Lista de usuarios cargada: ${users.length} usuarios`);
 }
 
 function getRoleBadge(role) {
@@ -220,6 +305,8 @@ function addNewUser() {
     const password = document.getElementById('newUserPassword').value;
     const name = document.getElementById('newUserName').value.trim();
     const role = document.getElementById('newUserRole').value;
+
+    console.log('👤 Intentando agregar usuario:', { email, name, role });
 
     // Validaciones
     if (!email || !password || !name) {
@@ -279,25 +366,46 @@ function deleteUser(email) {
 // ========== FUNCIONES DE INTERFAZ MEJORADAS ==========
 
 function showApp() {
+    console.log('🖥️ Mostrando aplicación principal...');
     document.getElementById('loginContainer').classList.add('hidden');
     document.getElementById('appContainer').classList.remove('hidden');
+    document.getElementById('adminPanel').classList.add('hidden');
+    
     document.getElementById('currentUser').textContent = appState.currentUser.name;
     
     // Mostrar botón de admin si es admin o superadmin
-    if (appState.currentUser.role === 'admin' || appState.currentUser.role === 'superadmin') {
-        document.getElementById('adminBtn').classList.remove('hidden');
+    const adminBtn = document.getElementById('adminBtn');
+    if (adminBtn && (appState.currentUser.role === 'admin' || appState.currentUser.role === 'superadmin')) {
+        adminBtn.classList.remove('hidden');
+        console.log('👥 Botón de admin mostrado');
     }
     
     // Limpiar campos del login
     document.getElementById('emailInput').value = '';
     document.getElementById('passwordInput').value = '';
+    
+    console.log('✅ Aplicación principal mostrada correctamente');
 }
 
 function showNotification(message, type = 'info') {
+    console.log(`💬 Notificación [${type}]:`, message);
+    
     // Crear notificación temporal
     const notification = document.createElement('div');
     notification.className = `notification ${type}`;
     notification.textContent = message;
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 15px 20px;
+        background: ${type === 'success' ? '#d4edda' : type === 'error' ? '#f8d7da' : type === 'warning' ? '#fff3cd' : '#d1ecf1'};
+        color: ${type === 'success' ? '#155724' : type === 'error' ? '#721c24' : type === 'warning' ? '#856404' : '#0c5460'};
+        border: 1px solid ${type === 'success' ? '#c3e6cb' : type === 'error' ? '#f5c6cb' : type === 'warning' ? '#ffeaa7' : '#bee5eb'};
+        border-radius: 5px;
+        z-index: 10000;
+        max-width: 300px;
+    `;
     
     document.body.appendChild(notification);
     
@@ -310,15 +418,20 @@ function showNotification(message, type = 'info') {
 }
 
 function showError(message) {
+    console.error('❌ Error mostrado:', message);
     const errorDiv = document.getElementById('loginError');
-    errorDiv.textContent = message;
-    errorDiv.style.display = 'block';
+    if (errorDiv) {
+        errorDiv.textContent = message;
+        errorDiv.style.display = 'block';
+    }
 }
 
 function clearError() {
     const errorDiv = document.getElementById('loginError');
-    errorDiv.textContent = '';
-    errorDiv.style.display = 'none';
+    if (errorDiv) {
+        errorDiv.textContent = '';
+        errorDiv.style.display = 'none';
+    }
 }
 
 // ========== FUNCIONES DE PROCESAMIENTO DE NÚMEROS MEJORADAS ==========
@@ -364,7 +477,7 @@ async function processNumbers() {
     }
     
     if (numbers.length > APP_CONFIG.maxNumbersPerBatch) {
-        alert(`Máximo ${APP_CONFIG.maxNumbersPerBatch} números por lote. Por favor reduce la cantidad.');
+        alert(`Máximo ${APP_CONFIG.maxNumbersPerBatch} números por lote. Por favor reduce la cantidad.`);
         return;
     }
     
