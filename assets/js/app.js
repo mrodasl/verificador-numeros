@@ -497,6 +497,8 @@ async function processNumbers() {
     let successCount = 0;
     let errorCount = 0;
     
+    console.log(`🔨 Iniciando procesamiento de ${numbers.length} números`);
+    
     // Procesar cada número
     for (let i = 0; i < numbers.length; i++) {
         const number = numbers[i];
@@ -510,10 +512,14 @@ async function processNumbers() {
         resultsList.appendChild(resultItem);
         
         try {
+            console.log(`📤 Enviando verificación para: ${number}`);
+            
             // Enviar solicitud al backend
             const result = await sendVerificationRequest(number);
             
             if (result.success && result.messageSid) {
+                console.log(`✅ SMS creado para ${number}, SID: ${result.messageSid}, Estado inicial: ${result.initialStatus}`);
+                
                 // INICIAR VERIFICACIÓN CONTINUA DEL ESTADO
                 monitorMessageStatus(result.messageSid, number, resultItem);
                 
@@ -528,6 +534,7 @@ async function processNumbers() {
                 });
             } else {
                 // Error inmediato
+                console.log(`❌ Error inmediato para ${number}:`, result.error);
                 resultItem.className = 'result-item error';
                 resultItem.innerHTML = `
                     <div class="result-content">
@@ -547,6 +554,7 @@ async function processNumbers() {
             }
             
         } catch (error) {
+            console.error(`❌ Error de conexión para ${number}:`, error);
             resultItem.className = 'result-item error';
             resultItem.innerHTML = `
                 <div class="result-content">
@@ -579,26 +587,37 @@ async function processNumbers() {
     processBtn.textContent = 'Iniciar Verificación';
     appState.isProcessing = false;
     
+    console.log(`🏁 Procesamiento completado. Total resultados: ${appState.results.length}`);
+    
     // Mostrar resumen después de 2 segundos (para dar tiempo a las actualizaciones)
     setTimeout(() => {
         const finalSuccessCount = appState.results.filter(r => r.success === true).length;
         const finalErrorCount = appState.results.filter(r => r.success === false).length;
-        showCompletionMessage(finalSuccessCount, finalErrorCount);
+        const pendingCount = appState.results.filter(r => r.success === null).length;
+        
+        console.log(`📊 Resumen final - Entregados: ${finalSuccessCount}, Fallidos: ${finalErrorCount}, Pendientes: ${pendingCount}`);
+        showCompletionMessage(finalSuccessCount, finalErrorCount, pendingCount);
     }, 2000);
 }
 
-// NUEVA FUNCIÓN: Verificación en tiempo real del estado del mensaje
+// FUNCIÓN MEJORADA: Verificación en tiempo real del estado del mensaje
 async function monitorMessageStatus(messageSid, phoneNumber, resultItem) {
     const maxAttempts = 30; // 150 segundos total (30 * 5s)
     let attempts = 0;
+    
+    console.log(`🔍 Iniciando monitoreo para: ${phoneNumber}, SID: ${messageSid}`);
     
     const checkStatus = async () => {
         attempts++;
         
         try {
+            console.log(`🔄 Verificando estado (intento ${attempts}/${maxAttempts}) para: ${phoneNumber}`);
+            
             const statusResponse = await fetch(`/.netlify/functions/send-sms?messageSid=${messageSid}`);
+            
             if (statusResponse.ok) {
                 const statusData = await statusResponse.json();
+                console.log(`📊 Respuesta estado para ${phoneNumber}:`, statusData);
                 
                 if (statusData.success) {
                     // Actualizar interfaz con estado real
@@ -609,31 +628,44 @@ async function monitorMessageStatus(messageSid, phoneNumber, resultItem) {
                     if (resultIndex !== -1) {
                         appState.results[resultIndex].finalStatus = statusData.status;
                         appState.results[resultIndex].success = statusData.status === 'delivered';
+                        console.log(`✅ Estado actualizado en appState: ${statusData.status}`);
                     }
                     
                     // Si es estado final, detener verificación
                     if (isFinalStatus(statusData.status)) {
-                        console.log(`✅ Estado final para ${phoneNumber}: ${statusData.status}`);
+                        console.log(`🏁 Estado final alcanzado para ${phoneNumber}: ${statusData.status}`);
                         return;
                     }
+                } else {
+                    console.log(`❌ Error en respuesta para ${phoneNumber}:`, statusData.error);
                 }
+            } else {
+                console.log(`⚠️ Respuesta no OK para ${phoneNumber}:`, statusResponse.status);
             }
         } catch (error) {
-            console.error('Error verificando estado:', error);
+            console.error(`❌ Error verificando estado para ${phoneNumber}:`, error);
         }
         
         // Continuar verificando si no es estado final y no hemos excedido los intentos
         if (attempts < maxAttempts) {
+            console.log(`⏰ Esperando 5s para próxima verificación de ${phoneNumber}...`);
             setTimeout(checkStatus, 5000); // Verificar cada 5 segundos
         } else {
             // Timeout después de 150 segundos
+            console.log(`⏰ Timeout de verificación para ${phoneNumber} después de ${maxAttempts} intentos`);
             updateMessageStatusInUI(phoneNumber, 'timeout', messageSid, resultItem);
-            console.log(`⏰ Timeout de verificación para ${phoneNumber}`);
+            
+            // Marcar como fallido en appState
+            const resultIndex = appState.results.findIndex(r => r.number === phoneNumber);
+            if (resultIndex !== -1) {
+                appState.results[resultIndex].success = false;
+                appState.results[resultIndex].finalStatus = 'timeout';
+            }
         }
     };
     
-    // Iniciar la verificación
-    setTimeout(checkStatus, 2000); // Primera verificación después de 2 segundos
+    // Iniciar la verificación después de un pequeño delay
+    setTimeout(checkStatus, 2000);
 }
 
 // Determinar si un estado es final (no cambiará)
@@ -687,6 +719,7 @@ async function sendVerificationRequest(phoneNumber) {
     const backendUrl = '/.netlify/functions/send-sms';
     
     try {
+        console.log(`🌐 Enviando solicitud a backend para: ${phoneNumber}`);
         const response = await fetch(backendUrl, {
             method: 'POST',
             headers: {
@@ -702,10 +735,12 @@ async function sendVerificationRequest(phoneNumber) {
             throw new Error(`Error del servidor: ${response.status}`);
         }
         
-        return await response.json();
+        const result = await response.json();
+        console.log(`📨 Respuesta del backend para ${phoneNumber}:`, result);
+        return result;
         
     } catch (error) {
-        console.error('Error en la solicitud:', error);
+        console.error('❌ Error en la solicitud:', error);
         return {
             success: false,
             error: 'No se pudo conectar con el servicio de verificación'
@@ -719,15 +754,21 @@ function updateResultsCount(success, error, total) {
     document.getElementById('errorCount').textContent = error;
 }
 
-function showCompletionMessage(success, error) {
+function showCompletionMessage(success, error, pending = 0) {
     const resultsList = document.getElementById('resultsList');
     const completionMsg = document.createElement('div');
     completionMsg.className = 'result-item success';
+    
+    let message = `Entregados: ${success} | Fallidos: ${error}`;
+    if (pending > 0) {
+        message += ` | Pendientes: ${pending}`;
+    }
+    
     completionMsg.innerHTML = `
         <div class="result-content">
             <strong>🎉 Proceso completado</strong>
             <span class="result-detail">
-                Entregados: ${success} | Fallidos: ${error} | 
+                ${message} | 
                 <button onclick="exportResults()" style="background: none; border: none; color: #007bff; text-decoration: underline; cursor: pointer;">
                     Exportar resultados
                 </button>
