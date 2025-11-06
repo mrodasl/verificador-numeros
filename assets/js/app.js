@@ -321,7 +321,7 @@ function clearError() {
     errorDiv.style.display = 'none';
 }
 
-// ========== FUNCIONES DE PROCESAMIENTO DE NÚMEROS ==========
+// ========== FUNCIONES DE PROCESAMIENTO DE NÚMEROS MEJORADAS ==========
 
 function updateNumberCount() {
     const input = document.getElementById('numbersInput').value;
@@ -364,7 +364,7 @@ async function processNumbers() {
     }
     
     if (numbers.length > APP_CONFIG.maxNumbersPerBatch) {
-        alert(`Máximo ${APP_CONFIG.maxNumbersPerBatch} números por lote. Por favor reduce la cantidad.`);
+        alert(`Máximo ${APP_CONFIG.maxNumbersPerBatch} números por lote. Por favor reduce la cantidad.');
         return;
     }
     
@@ -398,38 +398,40 @@ async function processNumbers() {
         
         try {
             // Enviar solicitud al backend
-            const response = await sendVerificationRequest(number);
+            const result = await sendVerificationRequest(number);
             
-            if (response.success) {
-                resultItem.className = 'result-item success';
-                resultItem.innerHTML = `
-                    <div class="result-content">
-                        <strong>✅ ${number}</strong>
-                        <span class="result-detail">SMS enviado correctamente</span>
-                        <small>SID: ${response.messageSid}</small>
-                    </div>
-                `;
-                successCount++;
+            if (result.success && result.messageSid) {
+                // INICIAR VERIFICACIÓN CONTINUA DEL ESTADO
+                monitorMessageStatus(result.messageSid, number, resultItem);
+                
+                // Contar como "en proceso" inicialmente
+                appState.results.push({
+                    number: number,
+                    success: null, // Se determinará después
+                    messageSid: result.messageSid,
+                    initialStatus: result.initialStatus,
+                    timestamp: new Date().toISOString(),
+                    user: appState.currentUser.email
+                });
             } else {
+                // Error inmediato
                 resultItem.className = 'result-item error';
                 resultItem.innerHTML = `
                     <div class="result-content">
                         <strong>❌ ${number}</strong>
-                        <span class="result-detail">Error: ${response.error}</span>
+                        <span class="result-detail">Error: ${result.error}</span>
                     </div>
                 `;
                 errorCount++;
+                
+                appState.results.push({
+                    number: number,
+                    success: false,
+                    error: result.error,
+                    timestamp: new Date().toISOString(),
+                    user: appState.currentUser.email
+                });
             }
-            
-            // Guardar resultado
-            appState.results.push({
-                number: number,
-                success: response.success,
-                messageSid: response.messageSid,
-                error: response.error,
-                timestamp: new Date().toISOString(),
-                user: appState.currentUser.email
-            });
             
         } catch (error) {
             resultItem.className = 'result-item error';
@@ -464,8 +466,95 @@ async function processNumbers() {
     processBtn.textContent = 'Iniciar Verificación';
     appState.isProcessing = false;
     
-    // Mostrar resumen
-    showCompletionMessage(successCount, errorCount);
+    // Mostrar resumen después de 2 segundos (para dar tiempo a las actualizaciones)
+    setTimeout(() => {
+        const finalSuccessCount = appState.results.filter(r => r.success === true).length;
+        const finalErrorCount = appState.results.filter(r => r.success === false).length;
+        showCompletionMessage(finalSuccessCount, finalErrorCount);
+    }, 2000);
+}
+
+// NUEVA FUNCIÓN: Verificación en tiempo real del estado del mensaje
+async function monitorMessageStatus(messageSid, phoneNumber, resultItem) {
+    const maxAttempts = 30; // 150 segundos total (30 * 5s)
+    let attempts = 0;
+    
+    const checkStatus = async () => {
+        attempts++;
+        
+        try {
+            const statusResponse = await fetch(`/.netlify/functions/send-sms?messageSid=${messageSid}`);
+            if (statusResponse.ok) {
+                const statusData = await statusResponse.json();
+                
+                if (statusData.success) {
+                    // Actualizar interfaz con estado real
+                    updateMessageStatusInUI(phoneNumber, statusData.status, messageSid, resultItem);
+                    
+                    // Actualizar resultados globales
+                    const resultIndex = appState.results.findIndex(r => r.number === phoneNumber);
+                    if (resultIndex !== -1) {
+                        appState.results[resultIndex].finalStatus = statusData.status;
+                        appState.results[resultIndex].success = statusData.status === 'delivered';
+                    }
+                    
+                    // Si es estado final, detener verificación
+                    if (isFinalStatus(statusData.status)) {
+                        console.log(`✅ Estado final para ${phoneNumber}: ${statusData.status}`);
+                        return;
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error verificando estado:', error);
+        }
+        
+        // Continuar verificando si no es estado final y no hemos excedido los intentos
+        if (attempts < maxAttempts) {
+            setTimeout(checkStatus, 5000); // Verificar cada 5 segundos
+        } else {
+            // Timeout después de 150 segundos
+            updateMessageStatusInUI(phoneNumber, 'timeout', messageSid, resultItem);
+            console.log(`⏰ Timeout de verificación para ${phoneNumber}`);
+        }
+    };
+    
+    // Iniciar la verificación
+    setTimeout(checkStatus, 2000); // Primera verificación después de 2 segundos
+}
+
+// Determinar si un estado es final (no cambiará)
+function isFinalStatus(status) {
+    const finalStatuses = ['delivered', 'undelivered', 'failed', 'canceled'];
+    return finalStatuses.includes(status);
+}
+
+// Actualizar la interfaz con el estado real
+function updateMessageStatusInUI(phoneNumber, status, messageSid, resultItem) {
+    const statusMap = {
+        'queued': { class: 'processing', text: '⏳ En cola de envío...', emoji: '⏳' },
+        'sending': { class: 'processing', text: '📤 Enviando a operador...', emoji: '📤' },
+        'sent': { class: 'processing', text: '✅ Enviado al operador', emoji: '✅' },
+        'delivered': { class: 'success', text: '📱 ENTREGADO al dispositivo', emoji: '📱' },
+        'undelivered': { class: 'error', text: '❌ NO ENTREGADO - Número inactivo/apagado', emoji: '❌' },
+        'failed': { class: 'error', text: '🚫 FALLADO - Error de red/operador', emoji: '🚫' },
+        'timeout': { class: 'error', text: '⏰ Timeout - No se pudo verificar estado final', emoji: '⏰' }
+    };
+    
+    const statusInfo = statusMap[status] || { 
+        class: 'processing', 
+        text: `Estado: ${status}`, 
+        emoji: '❓' 
+    };
+    
+    resultItem.className = `result-item ${statusInfo.class}`;
+    resultItem.innerHTML = `
+        <div class="result-content">
+            <strong>${statusInfo.emoji} ${phoneNumber}</strong>
+            <span class="result-detail">${statusInfo.text}</span>
+            <small>SID: ${messageSid} | Estado: ${status}</small>
+        </div>
+    `;
 }
 
 function createResultItem(number, status, message) {
@@ -480,8 +569,8 @@ function createResultItem(number, status, message) {
     return item;
 }
 
+// FUNCIÓN MEJORADA: Envío de verificación con manejo de estados
 async function sendVerificationRequest(phoneNumber) {
-    // IMPORTANTE: Esta URL se configurará cuando despliegues en Netlify
     const backendUrl = '/.netlify/functions/send-sms';
     
     try {
@@ -525,7 +614,7 @@ function showCompletionMessage(success, error) {
         <div class="result-content">
             <strong>🎉 Proceso completado</strong>
             <span class="result-detail">
-                Exitosos: ${success} | Fallidos: ${error} | 
+                Entregados: ${success} | Fallidos: ${error} | 
                 <button onclick="exportResults()" style="background: none; border: none; color: #007bff; text-decoration: underline; cursor: pointer;">
                     Exportar resultados
                 </button>
@@ -544,12 +633,14 @@ function exportResults() {
     }
     
     // Crear CSV
-    let csv = 'Número,Estado,MessageSID,Error,Timestamp,Usuario\n';
+    let csv = 'Número,Estado Final,MessageSID,Error,Timestamp,Usuario\n';
     
     appState.results.forEach(result => {
-        const estado = result.success ? 'EXITOSO' : 'FALLIDO';
+        const estado = result.success === true ? 'ENTREGADO' : 
+                      result.success === false ? 'FALLADO' : 'PENDIENTE';
         const messageSid = result.messageSid || 'N/A';
         const error = result.error ? `"${result.error.replace(/"/g, '""')}"` : 'N/A';
+        const estadoFinal = result.finalStatus || result.initialStatus || 'Desconocido';
         
         csv += `"${result.number}",${estado},${messageSid},${error},${result.timestamp},"${result.user}"\n`;
     });
