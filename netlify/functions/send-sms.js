@@ -122,11 +122,7 @@ exports.handler = async function(event, context) {
         const client = new Twilio(TWILIO_CONFIG.accountSid, TWILIO_CONFIG.authToken);
 
         // Mensaje de verificación
-        const verificationMessage = `¡Bienvenido a casa!
-¿Buscas oportunidades, apoyo o información para reintegrarte en Guatemala? Estamos para ayudarte.
-
-Escríbenos a: 
-https://wa.me/50239359960?text=Hola,%20quiero%20mas%20informacion%20`;
+        const verificationMessage = `¡Bienvenido a casa!`;
 
         // Construir URL del webhook dinámicamente
         const webhookUrl = process.env.URL 
