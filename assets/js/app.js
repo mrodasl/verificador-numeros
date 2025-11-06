@@ -642,54 +642,43 @@ async function monitorMessageStatus(messageSid, phoneNumber, resultItem) {
         try {
             console.log(`🔄 Verificación MEJORADA (intento ${attempts}/${maxAttempts}) para: ${phoneNumber}`);
             
-            const statusResponse = await fetch(`/.netlify/functions/send-sms?messageSid=${messageSid}&t=${Date.now()}`);
+            // CONSULTA DIRECTA A TWILIO - FORZAR ACTUALIZACIÓN
+            const statusResponse = await fetch(`/.netlify/functions/send-sms?messageSid=${messageSid}&force=true&t=${Date.now()}`);
             
             if (statusResponse.ok) {
                 const statusData = await statusResponse.json();
                 console.log(`📊 Respuesta MEJORADA para ${phoneNumber}:`, {
                     status: statusData.status,
                     source: statusData.source,
-                    errorCode: statusData.errorCode
+                    errorCode: statusData.errorCode,
+                    errorMessage: statusData.errorMessage
                 });
                 
                 if (statusData.success) {
                     lastStatus = statusData.status;
                     
-                    // Actualizar interfaz con estado real
+                    // ACTUALIZACIÓN CRÍTICA: Respetar SIEMPRE el estado de Twilio
                     updateMessageStatusInUI(phoneNumber, statusData.status, messageSid, resultItem);
                     
-                    // Actualizar resultados globales
+                    // Actualizar resultados globales con estado REAL de Twilio
                     const resultIndex = appState.results.findIndex(r => r.number === phoneNumber);
                     if (resultIndex !== -1) {
                         appState.results[resultIndex].finalStatus = statusData.status;
-                        appState.results[resultIndex].success = statusData.status === 'delivered';
+                        appState.results[resultIndex].success = (statusData.status === 'delivered');
                         appState.results[resultIndex].lastCheck = new Date().toISOString();
                         appState.results[resultIndex].attempts = attempts;
                         appState.results[resultIndex].source = statusData.source;
+                        appState.results[resultIndex].errorCode = statusData.errorCode;
+                        appState.results[resultIndex].errorMessage = statusData.errorMessage;
+                        
+                        // ACTUALIZAR CONTADORES EN TIEMPO REAL
+                        updateLiveCounters();
                     }
                     
-                    // LÓGICA MEJORADA: Detección de estados finales
-                    if (finalStates.includes(statusData.status)) {
-                        console.log(`🏁 Estado final VERDADERO alcanzado para ${phoneNumber}: ${statusData.status}`);
-                        
-                        // Si es "sent" pero hemos hecho varias verificaciones, considerar como posible "delivered"
-                        if (statusData.status === 'sent' && attempts >= 8) {
-                            console.log(`⚠️ Estado "sent" persistente para ${phoneNumber} después de ${attempts} intentos. Posible entrega.`);
-                            updateMessageStatusInUI(phoneNumber, 'likely_delivered', messageSid, resultItem);
-                            
-                            if (resultIndex !== -1) {
-                                appState.results[resultIndex].success = true;
-                                appState.results[resultIndex].finalStatus = 'likely_delivered';
-                            }
-                        }
-                        
-                        return;
-                    }
-                    
-                    // LÓGICA ESPECIAL: Si el estado es "sent" por mucho tiempo, podría ser entregado
-                    if (statusData.status === 'sent' && attempts >= 12) {
-                        console.log(`📨 Estado "sent" persistente para ${phoneNumber}. Considerando como posible entrega.`);
-                        updateMessageStatusInUI(phoneNumber, 'sent_persistent', messageSid, resultItem);
+                    // LÓGICA CORREGIDA: Solo detener si es estado FINAL real
+                    if (isFinalStatus(statusData.status)) {
+                        console.log(`🏁 Estado FINAL REAL de Twilio para ${phoneNumber}: ${statusData.status}`);
+                        return; // Detener verificaciones
                     }
                     
                 } else {
@@ -703,35 +692,25 @@ async function monitorMessageStatus(messageSid, phoneNumber, resultItem) {
         }
         
         // Continuar verificando si no es estado final y no hemos excedido los intentos
-        if (attempts < maxAttempts) {
+        if (attempts < maxAttempts && !isFinalStatus(lastStatus)) {
             console.log(`⏰ Esperando ${checkInterval/1000}s para próxima verificación de ${phoneNumber}...`);
             setTimeout(checkStatus, checkInterval);
         } else {
             // Timeout después de todos los intentos
-            console.log(`⏰ Timeout de verificación para ${phoneNumber} después de ${maxAttempts} intentos. Último estado: ${lastStatus}`);
+            console.log(`⏰ Timeout de verificación para ${phoneNumber}. Último estado REAL: ${lastStatus}`);
             
-            // LÓGICA INTELIGENTE: Determinar resultado basado en último estado
-            let finalStatus = 'timeout';
-            let success = false;
+            // USAR ÚLTIMO ESTADO REAL DE TWILIO, no suposiciones
+            updateMessageStatusInUI(phoneNumber, lastStatus, messageSid, resultItem);
             
-            if (lastStatus === 'sent' || lastStatus === 'delivered') {
-                finalStatus = 'sent_no_final_confirmation';
-                success = true; // Probablemente entregado pero sin confirmación final
-            } else if (lastStatus === 'undelivered' || lastStatus === 'failed') {
-                finalStatus = lastStatus;
-                success = false;
-            }
-            
-            updateMessageStatusInUI(phoneNumber, finalStatus, messageSid, resultItem);
-            
-            // Actualizar appState
+            // Actualizar appState con estado real
             const resultIndex = appState.results.findIndex(r => r.number === phoneNumber);
             if (resultIndex !== -1) {
-                appState.results[resultIndex].success = success;
-                appState.results[resultIndex].finalStatus = finalStatus;
+                appState.results[resultIndex].success = (lastStatus === 'delivered');
+                appState.results[resultIndex].finalStatus = lastStatus;
                 appState.results[resultIndex].timeout = true;
-                appState.results[resultIndex].lastStatus = lastStatus;
             }
+            
+            updateLiveCounters();
         }
     };
     
@@ -739,26 +718,39 @@ async function monitorMessageStatus(messageSid, phoneNumber, resultItem) {
     setTimeout(checkStatus, initialDelay);
 }
 
-// Determinar si un estado es final (no cambiará)
+// NUEVA FUNCIÓN: Actualizar contadores en tiempo real
+function updateLiveCounters() {
+    const successCount = appState.results.filter(r => r.success === true).length;
+    const errorCount = appState.results.filter(r => r.success === false).length;
+    const total = appState.results.length;
+    
+    document.getElementById('successCount').textContent = successCount;
+    document.getElementById('errorCount').textContent = errorCount;
+    document.getElementById('totalCount').textContent = total;
+}
+
+// Determinar si un estado es final (no cambiará) - VERSIÓN MEJORADA
 function isFinalStatus(status) {
-    const finalStatuses = ['delivered', 'undelivered', 'failed', 'canceled'];
+    const finalStatuses = [
+        'delivered',      // Entregado ✓
+        'undelivered',    // No entregado ✓ (ESTE ES EL QUE FALTA)
+        'failed',         // Fallado
+        'canceled'        // Cancelado
+    ];
     return finalStatuses.includes(status);
 }
 
-// Actualizar la interfaz con el estado real
+// Actualizar la interfaz con el estado real - VERSIÓN CORREGIDA
 function updateMessageStatusInUI(phoneNumber, status, messageSid, resultItem) {
     const statusMap = {
         'queued': { class: 'processing', text: '⏳ En cola de envío...', emoji: '⏳' },
         'sending': { class: 'processing', text: '📤 Enviando a operador...', emoji: '📤' },
         'sent': { class: 'processing', text: '✅ Enviado al operador', emoji: '✅' },
         'delivered': { class: 'success', text: '📱 ENTREGADO al dispositivo', emoji: '📱' },
-        'undelivered': { class: 'error', text: '❌ NO ENTREGADO - Número inactivo/apagado', emoji: '❌' },
+        'undelivered': { class: 'error', text: '❌ NO ENTREGADO - Número inactivo/apagado', emoji: '❌' }, // ESTADO CRÍTICO
         'failed': { class: 'error', text: '🚫 FALLADO - Error de red/operador', emoji: '🚫' },
         'timeout': { class: 'error', text: '⏰ Timeout - No se pudo verificar estado final', emoji: '⏰' },
-        // NUEVOS ESTADOS MEJORADOS
-        'likely_delivered': { class: 'success', text: '📱 PROBABLEMENTE ENTREGADO (confirmación pendiente)', emoji: '📱' },
-        'sent_persistent': { class: 'processing', text: '🔄 Enviado - Esperando confirmación final...', emoji: '🔄' },
-        'sent_no_final_confirmation': { class: 'success', text: '📱 ENVIADO - Probablemente entregado', emoji: '📱' }
+        'sent_no_final_confirmation': { class: 'processing', text: '🔄 Enviado - Verificando estado final...', emoji: '🔄' }
     };
     
     const statusInfo = statusMap[status] || { 
