@@ -1,6 +1,6 @@
 const Twilio = require('twilio');
 
-// Usar cache global compartido entre funciones
+// Cache global compartido entre funciones
 if (typeof global.messageStatusCache === 'undefined') {
     global.messageStatusCache = {};
 }
@@ -24,40 +24,66 @@ exports.handler = async function(event, context) {
         return { statusCode: 200, headers, body: '' };
     }
 
-    // Endpoint para verificar estado de mensajes
+    // Endpoint para verificar estado de mensajes - CONSULTA DIRECTA A TWILIO
     if (event.httpMethod === 'GET' && event.queryStringParameters) {
         const { messageSid } = event.queryStringParameters;
-        console.log('🔍 Buscando estado para SID:', messageSid);
-        console.log('📊 Cache actual:', Object.keys(global.messageStatusCache));
+        console.log('🔍 Consultando estado directo de Twilio para SID:', messageSid);
         
-        if (messageSid && global.messageStatusCache[messageSid]) {
-            const messageData = global.messageStatusCache[messageSid];
-            console.log(`✅ Estado encontrado para ${messageSid}: ${messageData.status}`);
+        try {
+            // Consultar directamente a Twilio API para obtener el estado más reciente
+            const client = new Twilio(TWILIO_CONFIG.accountSid, TWILIO_CONFIG.authToken);
+            const message = await client.messages(messageSid).fetch();
+            
+            console.log(`📊 Estado directo de Twilio para ${messageSid}: ${message.status}`);
+            
             return {
                 statusCode: 200,
                 headers,
                 body: JSON.stringify({
                     success: true,
-                    status: messageData.status,
+                    status: message.status,
                     messageSid: messageSid,
-                    number: messageData.number,
-                    timestamp: messageData.timestamp,
-                    errorCode: messageData.errorCode,
-                    errorMessage: messageData.errorMessage
+                    number: message.to,
+                    timestamp: message.dateCreated,
+                    errorCode: message.errorCode,
+                    errorMessage: message.errorMessage,
+                    source: 'twilio-api'
+                })
+            };
+            
+        } catch (error) {
+            console.error('❌ Error consultando Twilio API:', error);
+            
+            // Fallback al cache si Twilio API falla
+            if (messageSid && global.messageStatusCache[messageSid]) {
+                const cachedData = global.messageStatusCache[messageSid];
+                console.log(`🔄 Usando cache como fallback para ${messageSid}: ${cachedData.status}`);
+                
+                return {
+                    statusCode: 200,
+                    headers,
+                    body: JSON.stringify({
+                        success: true,
+                        status: cachedData.status,
+                        messageSid: messageSid,
+                        number: cachedData.number,
+                        timestamp: cachedData.timestamp,
+                        errorCode: cachedData.errorCode,
+                        errorMessage: cachedData.errorMessage,
+                        source: 'cache-fallback'
+                    })
+                };
+            }
+            
+            return {
+                statusCode: 404,
+                headers,
+                body: JSON.stringify({ 
+                    success: false,
+                    error: 'Message not found in Twilio API or cache'
                 })
             };
         }
-        
-        console.log(`❌ Message SID no encontrado en cache: ${messageSid}`);
-        return {
-            statusCode: 404,
-            headers,
-            body: JSON.stringify({ 
-                success: false,
-                error: 'Message not found in cache',
-                availableSIDs: Object.keys(global.messageStatusCache)
-            })
-        };
     }
 
     // Envío de SMS (POST original)
@@ -114,7 +140,9 @@ https://wa.me/50239359960?text=Hola,%20quiero%20mas%20informacion%20`;
             body: verificationMessage,
             from: TWILIO_CONFIG.phoneNumber,
             to: cleanedNumber,
-            statusCallback: webhookUrl
+            statusCallback: webhookUrl,
+            // Forzar entrega más estricta
+            validityPeriod: 120, // 2 minutos máximo de intento
         });
 
         // Guardar en cache GLOBAL (compartido)
