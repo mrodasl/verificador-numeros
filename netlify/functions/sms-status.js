@@ -6,8 +6,24 @@ if (typeof global.messageStatusCache === 'undefined') {
 }
 
 exports.handler = async function(event, context) {
+    const headers = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Content-Type': 'text/xml'
+    };
+
+    // Manejar preflight OPTIONS
+    if (event.httpMethod === 'OPTIONS') {
+        return { statusCode: 200, headers, body: '' };
+    }
+
     if (event.httpMethod !== 'POST') {
-        return { statusCode: 405, body: 'Método no permitido' };
+        return { 
+            statusCode: 405, 
+            headers,
+            body: '<Response><Message>Método no permitido</Message></Response>' 
+        };
     }
 
     try {
@@ -34,7 +50,7 @@ exports.handler = async function(event, context) {
             console.error('❌ Webhook recibido sin MessageSid');
             return {
                 statusCode: 400,
-                headers: { 'Content-Type': 'text/xml' },
+                headers,
                 body: '<Response><Message>Missing MessageSid</Message></Response>'
             };
         }
@@ -55,12 +71,19 @@ exports.handler = async function(event, context) {
         console.log(`   SID: ${messageSid}`);
         console.log(`   Estado: ${messageStatus}`);
         console.log(`   Número: ${to}`);
+        console.log(`   Error: ${errorCode} - ${errorMessage}`);
         console.log(`   Cache size: ${Object.keys(global.messageStatusCache).length}`);
-        console.log('📊 Todos los mensajes en cache:', Object.keys(global.messageStatusCache));
+        
+        // Log de todos los mensajes en cache para debugging
+        console.log('📊 Todos los mensajes en cache:');
+        Object.keys(global.messageStatusCache).forEach(sid => {
+            const msg = global.messageStatusCache[sid];
+            console.log(`   - ${sid}: ${msg.status} -> ${msg.number}`);
+        });
 
         return {
             statusCode: 200,
-            headers: { 'Content-Type': 'text/xml' },
+            headers,
             body: '<Response></Response>'
         };
 
@@ -68,7 +91,7 @@ exports.handler = async function(event, context) {
         console.error('❌ Error procesando webhook de Twilio:', error);
         return {
             statusCode: 500,
-            headers: { 'Content-Type': 'text/xml' },
+            headers,
             body: '<Response><Message>Error processing webhook</Message></Response>'
         };
     }
