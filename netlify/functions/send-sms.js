@@ -1,152 +1,127 @@
-// netlify/functions/send-sms.js
 const Twilio = require('twilio');
 
+// Cache simple para tracking de estados (en producción usarías una BD)
+let messageStatusCache = {};
+
 exports.handler = async function(event, context) {
-    // Configuración - IMPORTANTE: Configurar estas variables en Netlify
     const TWILIO_CONFIG = {
         accountSid: process.env.TWILIO_ACCOUNT_SID,
         authToken: process.env.TWILIO_AUTH_TOKEN,
-        phoneNumber: process.env.TWILIO_PHONE_NUMBER || '+502XXXXXXX' // Tu número Twilio Guatemala
+        phoneNumber: process.env.TWILIO_PHONE_NUMBER
     };
 
-    // Habilitar CORS para el frontend
     const headers = {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS, GET',
         'Content-Type': 'application/json'
     };
 
-    // Manejar preflight OPTIONS request
+    // Manejar preflight OPTIONS
     if (event.httpMethod === 'OPTIONS') {
+        return { statusCode: 200, headers, body: '' };
+    }
+
+    // NUEVO: Endpoint para verificar estado de mensajes
+    if (event.httpMethod === 'GET' && event.queryStringParameters) {
+        const { messageSid } = event.queryStringParameters;
+        if (messageSid && messageStatusCache[messageSid]) {
+            return {
+                statusCode: 200,
+                headers,
+                body: JSON.stringify({
+                    success: true,
+                    status: messageStatusCache[messageSid].status,
+                    messageSid: messageSid,
+                    timestamp: messageStatusCache[messageSid].timestamp
+                })
+            };
+        }
         return {
-            statusCode: 200,
+            statusCode: 404,
             headers,
-            body: ''
+            body: JSON.stringify({ error: 'Message not found' })
         };
     }
 
-    // Validar método HTTP
+    // Envío de SMS (POST original)
     if (event.httpMethod !== 'POST') {
         return {
             statusCode: 405,
             headers,
-            body: JSON.stringify({ 
-                success: false, 
-                error: 'Método no permitido. Use POST.' 
-            })
+            body: JSON.stringify({ success: false, error: 'Método no permitido' })
         };
     }
 
     try {
-        // Parsear el cuerpo de la solicitud
-        let parsedBody;
-        try {
-            parsedBody = JSON.parse(event.body);
-        } catch (parseError) {
-            return {
-                statusCode: 400,
-                headers,
-                body: JSON.stringify({ 
-                    success: false, 
-                    error: 'Cuerpo de solicitud JSON inválido' 
-                })
-            };
-        }
-
-        const { number, user } = parsedBody;
+        const { number, user } = JSON.parse(event.body);
+        const cleanedNumber = number.replace(/\s+/g, '');
         
-        console.log(`Solicitud de verificación: ${number} por usuario ${user}`);
+        console.log(`Solicitud de verificación: ${cleanedNumber} por ${user}`);
 
         // Validaciones
-        if (!number) {
+        if (!cleanedNumber) {
             return {
                 statusCode: 400,
                 headers,
-                body: JSON.stringify({ 
-                    success: false, 
-                    error: 'Número telefónico es requerido' 
-                })
+                body: JSON.stringify({ success: false, error: 'Número requerido' })
             };
         }
 
-        // Validar formato de número guatemalteco
-        const cleanedNumber = number.replace(/\s+/g, '');
         if (!cleanedNumber.startsWith('+502')) {
             return {
                 statusCode: 400,
                 headers,
-                body: JSON.stringify({ 
-                    success: false, 
-                    error: 'El número debe ser de Guatemala (formato: +502 XXXXXXXX)' 
-                })
+                body: JSON.stringify({ success: false, error: 'El número debe ser de Guatemala (+502)' })
             };
         }
 
-        // Validar longitud del número
-        if (cleanedNumber.length < 12 || cleanedNumber.length > 13) {
-            return {
-                statusCode: 400,
-                headers,
-                body: JSON.stringify({ 
-                    success: false, 
-                    error: 'Número inválido. Formato esperado: +502 XXXXXXXX' 
-                })
-            };
-        }
-
-        // Verificar configuración de Twilio
-        if (!TWILIO_CONFIG.accountSid || !TWILIO_CONFIG.authToken) {
-            console.error('Twilio no configurado. Verifica las variables de entorno.');
-            return {
-                statusCode: 500,
-                headers,
-                body: JSON.stringify({ 
-                    success: false, 
-                    error: 'Servicio de SMS no configurado' 
-                })
-            };
-        }
-
-        // Inicializar cliente Twilio
+        // Inicializar Twilio
         const client = new Twilio(TWILIO_CONFIG.accountSid, TWILIO_CONFIG.authToken);
 
         // Mensaje de verificación MEJORADO
-        const verificationMessage = `¡Bienvenido a casa! 
+        const verificationMessage = `¡Bienvenido a casa!
+¿Buscas oportunidades, apoyo o información para reintegrarte en Guatemala? Estamos para ayudarte.
 
-¿Buscas oportunidades, apoyo o informacion para reintegrarte en Guatemala? Estamos para ayudarte.
-
-Escribenos directamente: 
+Escríbenos a: 
 https://wa.me/50239359960?text=Hola,%20quiero%20mas%20informacion%20`;
 
-        // Enviar SMS
+        // Enviar SMS con webhook para tracking
         const message = await client.messages.create({
             body: verificationMessage,
             from: TWILIO_CONFIG.phoneNumber,
             to: cleanedNumber,
-            // Webhook para tracking de estado (opcional)
-            statusCallback: process.env.URL ? `${process.env.URL}/.netlify/functions/sms-status` : undefined
+            statusCallback: `${process.env.URL}/.netlify/functions/sms-status`
         });
 
-        // Log exitoso
-        console.log(`✅ SMS enviado a ${cleanedNumber}. SID: ${message.sid}, Estado: ${message.status}`);
+        // Guardar en cache inicial
+        messageStatusCache[message.sid] = {
+            status: message.status, // 'queued', 'sent', 'delivered', 'undelivered', 'failed'
+            number: cleanedNumber,
+            user: user,
+            timestamp: new Date().toISOString()
+        };
 
-        // Respuesta exitosa
+        // Limpiar cache antiguo (prevenir memory leaks)
+        cleanupOldCache();
+
+        console.log(`✅ SMS creado: ${cleanedNumber}. SID: ${message.sid}, Estado: ${message.status}`);
+
         return {
             statusCode: 200,
             headers,
             body: JSON.stringify({
                 success: true,
                 messageSid: message.sid,
-                status: message.status,
+                initialStatus: message.status, // Estado inicial
                 number: cleanedNumber,
                 user: user,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                note: 'El estado puede cambiar. La aplicación verificará automáticamente.'
             })
         };
 
     } catch (error) {
-        // Manejo de errores específicos de Twilio
         console.error('❌ Error enviando SMS:', error);
         
         let errorMessage = 'Error interno del servidor';
@@ -156,7 +131,7 @@ https://wa.me/50239359960?text=Hola,%20quiero%20mas%20informacion%20`;
             errorMessage = 'Número telefónico inválido';
             statusCode = 400;
         } else if (error.code === 21408) {
-            errorMessage = 'No tien permisos para enviar SMS a este número';
+            errorMessage = 'No tienes permisos para enviar SMS a este número';
             statusCode = 403;
         } else if (error.code === 21610) {
             errorMessage = 'El número ha bloqueado los mensajes SMS';
@@ -174,9 +149,20 @@ https://wa.me/50239359960?text=Hola,%20quiero%20mas%20informacion%20`;
             headers,
             body: JSON.stringify({
                 success: false,
-                error: errorMessage,
-                details: process.env.NODE_ENV === 'development' ? error.message : undefined
+                error: errorMessage
             })
         };
     }
 };
+
+// Limpiar cache cada 24 horas
+function cleanupOldCache() {
+    const now = Date.now();
+    const twentyFourHours = 24 * 60 * 60 * 1000;
+    
+    Object.keys(messageStatusCache).forEach(sid => {
+        if (now - new Date(messageStatusCache[sid].timestamp).getTime() > twentyFourHours) {
+            delete messageStatusCache[sid];
+        }
+    });
+}
