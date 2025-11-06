@@ -36,6 +36,18 @@ exports.handler = async function(event, context) {
             
             console.log(`📊 Estado directo de Twilio para ${messageSid}: ${message.status}`);
             
+            // ACTUALIZAR CACHE CON ESTADO REAL DE TWILIO
+            global.messageStatusCache[messageSid] = {
+                status: message.status,
+                number: message.to,
+                timestamp: new Date().toISOString(),
+                errorCode: message.errorCode,
+                errorMessage: message.errorMessage,
+                from: message.from,
+                lastUpdated: new Date().toISOString(),
+                source: 'twilio-api-direct'
+            };
+            
             return {
                 statusCode: 200,
                 headers,
@@ -47,7 +59,7 @@ exports.handler = async function(event, context) {
                     timestamp: message.dateCreated,
                     errorCode: message.errorCode,
                     errorMessage: message.errorMessage,
-                    source: 'twilio-api'
+                    source: 'twilio-api-direct'
                 })
             };
             
