@@ -1,7 +1,9 @@
 const Twilio = require('twilio');
 
-// Cache simple para tracking de estados (en producción usarías una BD)
-let messageStatusCache = {};
+// Usar cache global compartido entre funciones
+if (typeof global.messageStatusCache === 'undefined') {
+    global.messageStatusCache = {};
+}
 
 exports.handler = async function(event, context) {
     const TWILIO_CONFIG = {
@@ -22,25 +24,32 @@ exports.handler = async function(event, context) {
         return { statusCode: 200, headers, body: '' };
     }
 
-    // NUEVO: Endpoint para verificar estado de mensajes
+    // Endpoint para verificar estado de mensajes
     if (event.httpMethod === 'GET' && event.queryStringParameters) {
         const { messageSid } = event.queryStringParameters;
-        if (messageSid && messageStatusCache[messageSid]) {
+        console.log('🔍 Buscando estado para SID:', messageSid);
+        console.log('📊 Cache actual:', Object.keys(global.messageStatusCache));
+        
+        if (messageSid && global.messageStatusCache[messageSid]) {
             return {
                 statusCode: 200,
                 headers,
                 body: JSON.stringify({
                     success: true,
-                    status: messageStatusCache[messageSid].status,
+                    status: global.messageStatusCache[messageSid].status,
                     messageSid: messageSid,
-                    timestamp: messageStatusCache[messageSid].timestamp
+                    timestamp: global.messageStatusCache[messageSid].timestamp
                 })
             };
         }
         return {
             statusCode: 404,
             headers,
-            body: JSON.stringify({ error: 'Message not found' })
+            body: JSON.stringify({ 
+                success: false,
+                error: 'Message not found in cache',
+                availableSIDs: Object.keys(global.messageStatusCache)
+            })
         };
     }
 
@@ -57,7 +66,7 @@ exports.handler = async function(event, context) {
         const { number, user } = JSON.parse(event.body);
         const cleanedNumber = number.replace(/\s+/g, '');
         
-        console.log(`Solicitud de verificación: ${cleanedNumber} por ${user}`);
+        console.log(`📤 Solicitud de verificación: ${cleanedNumber} por ${user}`);
 
         // Validaciones
         if (!cleanedNumber) {
@@ -79,33 +88,43 @@ exports.handler = async function(event, context) {
         // Inicializar Twilio
         const client = new Twilio(TWILIO_CONFIG.accountSid, TWILIO_CONFIG.authToken);
 
-        // Mensaje de verificación MEJORADO
+        // Mensaje de verificación
         const verificationMessage = `¡Bienvenido a casa!
 ¿Buscas oportunidades, apoyo o información para reintegrarte en Guatemala? Estamos para ayudarte.
 
 Escríbenos a: 
 https://wa.me/50239359960?text=Hola,%20quiero%20mas%20informacion%20`;
 
+        // Construir URL del webhook dinámicamente
+        const webhookUrl = process.env.URL 
+            ? `${process.env.URL}/.netlify/functions/sms-status`
+            : 'https://your-app.netlify.app/.netlify/functions/sms-status';
+
+        console.log('🔄 Webhook URL configurada:', webhookUrl);
+
         // Enviar SMS con webhook para tracking
         const message = await client.messages.create({
             body: verificationMessage,
             from: TWILIO_CONFIG.phoneNumber,
             to: cleanedNumber,
-            statusCallback: `${process.env.URL}/.netlify/functions/sms-status`
+            statusCallback: webhookUrl
         });
 
-        // Guardar en cache inicial
-        messageStatusCache[message.sid] = {
-            status: message.status, // 'queued', 'sent', 'delivered', 'undelivered', 'failed'
+        // Guardar en cache GLOBAL (compartido)
+        global.messageStatusCache[message.sid] = {
+            status: message.status, // Estado inicial: 'queued', 'sent', etc.
             number: cleanedNumber,
             user: user,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            initialStatus: message.status
         };
 
-        // Limpiar cache antiguo (prevenir memory leaks)
+        // Limpiar cache antiguo
         cleanupOldCache();
 
-        console.log(`✅ SMS creado: ${cleanedNumber}. SID: ${message.sid}, Estado: ${message.status}`);
+        console.log(`✅ SMS creado: ${cleanedNumber}`);
+        console.log(`📝 SID: ${message.sid}, Estado inicial: ${message.status}`);
+        console.log(`📊 Tamaño del cache: ${Object.keys(global.messageStatusCache).length}`);
 
         return {
             statusCode: 200,
@@ -113,7 +132,7 @@ https://wa.me/50239359960?text=Hola,%20quiero%20mas%20informacion%20`;
             body: JSON.stringify({
                 success: true,
                 messageSid: message.sid,
-                initialStatus: message.status, // Estado inicial
+                initialStatus: message.status,
                 number: cleanedNumber,
                 user: user,
                 timestamp: new Date().toISOString(),
@@ -160,9 +179,11 @@ function cleanupOldCache() {
     const now = Date.now();
     const twentyFourHours = 24 * 60 * 60 * 1000;
     
-    Object.keys(messageStatusCache).forEach(sid => {
-        if (now - new Date(messageStatusCache[sid].timestamp).getTime() > twentyFourHours) {
-            delete messageStatusCache[sid];
+    Object.keys(global.messageStatusCache).forEach(sid => {
+        const messageTime = new Date(global.messageStatusCache[sid].timestamp).getTime();
+        if (now - messageTime > twentyFourHours) {
+            console.log(`🧹 Limpiando cache antiguo: ${sid}`);
+            delete global.messageStatusCache[sid];
         }
     });
 }
