@@ -117,7 +117,7 @@ exports.handler = async function(event, context) {
 ¿Buscas oportunidades, apoyo o informacion para reintegrarte en Guatemala? Estamos para ayudarte.
 
 Escribenos directamente: 
-https://wa.me/50239359960?text=Hola,%20quiero%20más%20información%20sobre%20los%20servicios%20disponibles`;
+https://wa.me/50239359960?text=Hola,%20quiero%20mas%20informacion%20`;
 
         // Enviar SMS
         const message = await client.messages.create({
