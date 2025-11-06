@@ -5,11 +5,11 @@ const APP_CONFIG = {
     maxNumbersPerBatch: 50,
     delayBetweenRequests: 500,
     sessionTimeout: 30, // minutos
-    // NUEVO: Configuración mejorada de verificación
+    // CONFIGURACIÓN MEJORADA: Más tiempo para verificación
     statusCheckConfig: {
-        initialDelay: 3000, // 3 segundos para primera verificación
-        checkInterval: 7000, // 7 segundos entre verificaciones
-        maxAttempts: 20, // Máximo 20 intentos (~2.5 minutos)
+        initialDelay: 5000, // 5 segundos para primera verificación
+        checkInterval: 10000, // 10 segundos entre verificaciones (antes 7s)
+        maxAttempts: 30, // Máximo 30 intentos (~5 minutos) - ANTES: 20
         finalStates: ['delivered', 'undelivered', 'failed', 'canceled']
     }
 };
@@ -521,9 +521,8 @@ async function processNumbers() {
     const resultsList = document.getElementById('resultsList');
     resultsList.innerHTML = '';
     
-    // Contadores
-    let successCount = 0;
-    let errorCount = 0;
+    // Inicializar contadores a CERO
+    updateResultsCount(0, 0, numbers.length);
     
     console.log(`🔨 Iniciando procesamiento de ${numbers.length} números`);
     
@@ -570,7 +569,6 @@ async function processNumbers() {
                         <span class="result-detail">Error: ${result.error}</span>
                     </div>
                 `;
-                errorCount++;
                 
                 appState.results.push({
                     number: number,
@@ -579,6 +577,9 @@ async function processNumbers() {
                     timestamp: new Date().toISOString(),
                     user: appState.currentUser.email
                 });
+                
+                // ACTUALIZAR CONTADORES INMEDIATAMENTE
+                updateLiveCounters();
             }
             
         } catch (error) {
@@ -590,7 +591,6 @@ async function processNumbers() {
                     <span class="result-detail">Error de conexión: ${error.message}</span>
                 </div>
             `;
-            errorCount++;
             
             appState.results.push({
                 number: number,
@@ -599,10 +599,10 @@ async function processNumbers() {
                 timestamp: new Date().toISOString(),
                 user: appState.currentUser.email
             });
+            
+            // ACTUALIZAR CONTADORES INMEDIATAMENTE
+            updateLiveCounters();
         }
-        
-        // Actualizar contadores
-        updateResultsCount(successCount, errorCount, numbers.length);
         
         // Pequeña pausa entre requests
         if (i < numbers.length - 1) {
@@ -617,15 +617,10 @@ async function processNumbers() {
     
     console.log(`🏁 Procesamiento completado. Total resultados: ${appState.results.length}`);
     
-    // Mostrar resumen después de 2 segundos (para dar tiempo a las actualizaciones)
+    // MOSTRAR RESUMEN FINAL MEJORADO - Esperar 5 segundos adicionales
     setTimeout(() => {
-        const finalSuccessCount = appState.results.filter(r => r.success === true).length;
-        const finalErrorCount = appState.results.filter(r => r.success === false).length;
-        const pendingCount = appState.results.filter(r => r.success === null).length;
-        
-        console.log(`📊 Resumen final - Entregados: ${finalSuccessCount}, Fallidos: ${finalErrorCount}, Pendientes: ${pendingCount}`);
-        showCompletionMessage(finalSuccessCount, finalErrorCount, pendingCount);
-    }, 2000);
+        showFinalSummary();
+    }, 5000);
 }
 
 // FUNCIÓN MEJORADA: Verificación en tiempo real del estado del mensaje
@@ -696,18 +691,30 @@ async function monitorMessageStatus(messageSid, phoneNumber, resultItem) {
             console.log(`⏰ Esperando ${checkInterval/1000}s para próxima verificación de ${phoneNumber}...`);
             setTimeout(checkStatus, checkInterval);
         } else {
-            // Timeout después de todos los intentos
+            // Timeout después de todos los intentos - LÓGICA MEJORADA
             console.log(`⏰ Timeout de verificación para ${phoneNumber}. Último estado REAL: ${lastStatus}`);
             
-            // USAR ÚLTIMO ESTADO REAL DE TWILIO, no suposiciones
-            updateMessageStatusInUI(phoneNumber, lastStatus, messageSid, resultItem);
+            // DETERMINAR ESTADO FINAL INTELIGENTEMENTE
+            let finalStatus = lastStatus;
+            let finalSuccess = (lastStatus === 'delivered');
+            
+            // Si después de 30 intentos sigue como "sent", probablemente no se entregó
+            if (lastStatus === 'sent' && attempts >= maxAttempts) {
+                finalStatus = 'sent_timeout';
+                finalSuccess = false; // Considerar como no entregado después de timeout extendido
+                console.log(`⚠️ Estado "sent" persistente después de ${maxAttempts} intentos. Marcando como no entregado.`);
+            }
+            
+            // USAR ESTADO FINAL DETERMINADO
+            updateMessageStatusInUI(phoneNumber, finalStatus, messageSid, resultItem);
             
             // Actualizar appState con estado real
             const resultIndex = appState.results.findIndex(r => r.number === phoneNumber);
             if (resultIndex !== -1) {
-                appState.results[resultIndex].success = (lastStatus === 'delivered');
-                appState.results[resultIndex].finalStatus = lastStatus;
+                appState.results[resultIndex].success = finalSuccess;
+                appState.results[resultIndex].finalStatus = finalStatus;
                 appState.results[resultIndex].timeout = true;
+                appState.results[resultIndex].lastStatus = lastStatus;
             }
             
             updateLiveCounters();
@@ -718,15 +725,35 @@ async function monitorMessageStatus(messageSid, phoneNumber, resultItem) {
     setTimeout(checkStatus, initialDelay);
 }
 
+// NUEVA FUNCIÓN: Mostrar resumen final preciso
+function showFinalSummary() {
+    const finalResults = calculateFinalResults();
+    
+    console.log(`📊 RESUMEN FINAL PRECISO:`, finalResults);
+    
+    showCompletionMessage(
+        finalResults.success, 
+        finalResults.error, 
+        finalResults.pending
+    );
+}
+
+// NUEVA FUNCIÓN: Calcular resultados finales precisos
+function calculateFinalResults() {
+    const success = appState.results.filter(r => r.success === true).length;
+    const error = appState.results.filter(r => r.success === false).length;
+    const pending = appState.results.filter(r => r.success === null).length;
+    
+    return { success, error, pending };
+}
+
 // NUEVA FUNCIÓN: Actualizar contadores en tiempo real
 function updateLiveCounters() {
-    const successCount = appState.results.filter(r => r.success === true).length;
-    const errorCount = appState.results.filter(r => r.success === false).length;
-    const total = appState.results.length;
+    const results = calculateFinalResults();
     
-    document.getElementById('successCount').textContent = successCount;
-    document.getElementById('errorCount').textContent = errorCount;
-    document.getElementById('totalCount').textContent = total;
+    document.getElementById('successCount').textContent = results.success;
+    document.getElementById('errorCount').textContent = results.error;
+    document.getElementById('totalCount').textContent = appState.results.length;
 }
 
 // Determinar si un estado es final (no cambiará) - VERSIÓN MEJORADA
@@ -750,6 +777,7 @@ function updateMessageStatusInUI(phoneNumber, status, messageSid, resultItem) {
         'undelivered': { class: 'error', text: '❌ NO ENTREGADO - Número inactivo/apagado', emoji: '❌' }, // ESTADO CRÍTICO
         'failed': { class: 'error', text: '🚫 FALLADO - Error de red/operador', emoji: '🚫' },
         'timeout': { class: 'error', text: '⏰ Timeout - No se pudo verificar estado final', emoji: '⏰' },
+        'sent_timeout': { class: 'error', text: '❌ NO ENTREGADO - Timeout después de múltiples intentos', emoji: '❌' }, // NUEVO ESTADO
         'sent_no_final_confirmation': { class: 'processing', text: '🔄 Enviado - Verificando estado final...', emoji: '🔄' }
     };
     
@@ -827,8 +855,15 @@ function updateResultsCount(success, error, total) {
 
 function showCompletionMessage(success, error, pending = 0) {
     const resultsList = document.getElementById('resultsList');
+    
+    // Eliminar mensaje de completado anterior si existe
+    const existingCompletionMsg = document.querySelector('.completion-message');
+    if (existingCompletionMsg) {
+        existingCompletionMsg.remove();
+    }
+    
     const completionMsg = document.createElement('div');
-    completionMsg.className = 'result-item success';
+    completionMsg.className = 'result-item success completion-message';
     
     let message = `Entregados: ${success} | Fallidos: ${error}`;
     if (pending > 0) {
