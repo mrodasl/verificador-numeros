@@ -35,7 +35,7 @@ exports.handler = async function(event, context) {
         const errorCode = formData.get('ErrorCode');
         const errorMessage = formData.get('ErrorMessage');
 
-        console.log(`📱 ACTUALIZACIÓN ESTADO SMS RECIBIDA:`, {
+        console.log(`📱 WEBHOOK TWILIO RECIBIDO:`, {
             messageSid,
             messageStatus,
             to,
@@ -55,7 +55,7 @@ exports.handler = async function(event, context) {
             };
         }
 
-        // Actualizar cache GLOBAL con estado real
+        // Actualizar cache GLOBAL con estado real DEL WEBHOOK
         global.messageStatusCache[messageSid] = {
             status: messageStatus,
             number: to,
@@ -63,23 +63,17 @@ exports.handler = async function(event, context) {
             errorCode: errorCode || null,
             errorMessage: errorMessage || null,
             from: from,
-            lastUpdated: new Date().toISOString()
+            lastUpdated: new Date().toISOString(),
+            source: 'webhook' // Identificar que viene del webhook
         };
 
         // Log detallado para debugging
-        console.log('💾 Cache actualizado correctamente:');
+        console.log('💾 WEBHOOK: Cache actualizado correctamente');
         console.log(`   SID: ${messageSid}`);
         console.log(`   Estado: ${messageStatus}`);
         console.log(`   Número: ${to}`);
         console.log(`   Error: ${errorCode} - ${errorMessage}`);
         console.log(`   Cache size: ${Object.keys(global.messageStatusCache).length}`);
-        
-        // Log de todos los mensajes en cache para debugging
-        console.log('📊 Todos los mensajes en cache:');
-        Object.keys(global.messageStatusCache).forEach(sid => {
-            const msg = global.messageStatusCache[sid];
-            console.log(`   - ${sid}: ${msg.status} -> ${msg.number}`);
-        });
 
         return {
             statusCode: 200,
