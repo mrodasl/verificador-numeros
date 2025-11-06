@@ -682,4 +682,150 @@ function updateMessageStatusInUI(phoneNumber, status, messageSid, resultItem) {
         'sent': { class: 'processing', text: '✅ Enviado al operador', emoji: '✅' },
         'delivered': { class: 'success', text: '📱 ENTREGADO al dispositivo', emoji: '📱' },
         'undelivered': { class: 'error', text: '❌ NO ENTREGADO - Número inactivo/apagado', emoji: '❌' },
-        'failed': { class: 'error', text: '🚫 FALLADO - Error de red/operador', emoji: '🚫'
+        'failed': { class: 'error', text: '🚫 FALLADO - Error de red/operador', emoji: '🚫' },
+        'timeout': { class: 'error', text: '⏰ Timeout - No se pudo verificar estado final', emoji: '⏰' }
+    };
+    
+    const statusInfo = statusMap[status] || { 
+        class: 'processing', 
+        text: `Estado: ${status}`, 
+        emoji: '❓' 
+    };
+    
+    resultItem.className = `result-item ${statusInfo.class}`;
+    resultItem.innerHTML = `
+        <div class="result-content">
+            <strong>${statusInfo.emoji} ${phoneNumber}</strong>
+            <span class="result-detail">${statusInfo.text}</span>
+            <small>SID: ${messageSid} | Estado: ${status}</small>
+        </div>
+    `;
+}
+
+function createResultItem(number, status, message) {
+    const item = document.createElement('div');
+    item.className = `result-item ${status}`;
+    item.innerHTML = `
+        <div class="result-content">
+            <strong>${status === 'processing' ? '⏳' : ''} ${number}</strong>
+            <span class="result-detail">${message}</span>
+        </div>
+    `;
+    return item;
+}
+
+// FUNCIÓN MEJORADA: Envío de verificación con manejo de estados
+async function sendVerificationRequest(phoneNumber) {
+    const backendUrl = '/.netlify/functions/send-sms';
+    
+    try {
+        console.log(`🌐 Enviando solicitud a backend para: ${phoneNumber}`);
+        const response = await fetch(backendUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                number: phoneNumber,
+                user: appState.currentUser.email
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Error del servidor: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log(`📨 Respuesta del backend para ${phoneNumber}:`, result);
+        return result;
+        
+    } catch (error) {
+        console.error('❌ Error en la solicitud:', error);
+        return {
+            success: false,
+            error: 'No se pudo conectar con el servicio de verificación'
+        };
+    }
+}
+
+function updateResultsCount(success, error, total) {
+    document.getElementById('totalCount').textContent = total;
+    document.getElementById('successCount').textContent = success;
+    document.getElementById('errorCount').textContent = error;
+}
+
+function showCompletionMessage(success, error, pending = 0) {
+    const resultsList = document.getElementById('resultsList');
+    const completionMsg = document.createElement('div');
+    completionMsg.className = 'result-item success';
+    
+    let message = `Entregados: ${success} | Fallidos: ${error}`;
+    if (pending > 0) {
+        message += ` | Pendientes: ${pending}`;
+    }
+    
+    completionMsg.innerHTML = `
+        <div class="result-content">
+            <strong>🎉 Proceso completado</strong>
+            <span class="result-detail">
+                ${message} | 
+                <button onclick="exportResults()" style="background: none; border: none; color: #007bff; text-decoration: underline; cursor: pointer;">
+                    Exportar resultados
+                </button>
+            </span>
+        </div>
+    `;
+    resultsList.appendChild(completionMsg);
+}
+
+// ========== FUNCIONES DE EXPORTACIÓN ==========
+
+function exportResults() {
+    if (appState.results.length === 0) {
+        alert('No hay resultados para exportar.');
+        return;
+    }
+    
+    // Crear CSV
+    let csv = 'Número,Estado Final,MessageSID,Error,Timestamp,Usuario\n';
+    
+    appState.results.forEach(result => {
+        const estado = result.success === true ? 'ENTREGADO' : 
+                      result.success === false ? 'FALLADO' : 'PENDIENTE';
+        const messageSid = result.messageSid || 'N/A';
+        const error = result.error ? `"${result.error.replace(/"/g, '""')}"` : 'N/A';
+        const estadoFinal = result.finalStatus || result.initialStatus || 'Desconocido';
+        
+        csv += `"${result.number}",${estado},${messageSid},${error},${result.timestamp},"${result.user}"\n`;
+    });
+    
+    // Descargar archivo
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', `verificacion_numeros_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+// Manejo de errores global
+window.addEventListener('error', function(e) {
+    console.error('Error global:', e.error);
+});
+
+// Exportar para uso global
+window.appState = appState;
+window.processNumbers = processNumbers;
+window.exportResults = exportResults;
+window.login = login;
+window.logout = logout;
+window.showAdminPanel = showAdminPanel;
+window.hideAdminPanel = hideAdminPanel;
+window.addNewUser = addNewUser;
+window.deleteUser = deleteUser;
+window.updateSessionTimeout = updateSessionTimeout;
