@@ -31,17 +31,24 @@ exports.handler = async function(event, context) {
         console.log('📊 Cache actual:', Object.keys(global.messageStatusCache));
         
         if (messageSid && global.messageStatusCache[messageSid]) {
+            const messageData = global.messageStatusCache[messageSid];
+            console.log(`✅ Estado encontrado para ${messageSid}: ${messageData.status}`);
             return {
                 statusCode: 200,
                 headers,
                 body: JSON.stringify({
                     success: true,
-                    status: global.messageStatusCache[messageSid].status,
+                    status: messageData.status,
                     messageSid: messageSid,
-                    timestamp: global.messageStatusCache[messageSid].timestamp
+                    number: messageData.number,
+                    timestamp: messageData.timestamp,
+                    errorCode: messageData.errorCode,
+                    errorMessage: messageData.errorMessage
                 })
             };
         }
+        
+        console.log(`❌ Message SID no encontrado en cache: ${messageSid}`);
         return {
             statusCode: 404,
             headers,
@@ -116,7 +123,8 @@ https://wa.me/50239359960?text=Hola,%20quiero%20mas%20informacion%20`;
             number: cleanedNumber,
             user: user,
             timestamp: new Date().toISOString(),
-            initialStatus: message.status
+            initialStatus: message.status,
+            from: TWILIO_CONFIG.phoneNumber
         };
 
         // Limpiar cache antiguo
@@ -136,54 +144,4 @@ https://wa.me/50239359960?text=Hola,%20quiero%20mas%20informacion%20`;
                 number: cleanedNumber,
                 user: user,
                 timestamp: new Date().toISOString(),
-                note: 'El estado puede cambiar. La aplicación verificará automáticamente.'
-            })
-        };
-
-    } catch (error) {
-        console.error('❌ Error enviando SMS:', error);
-        
-        let errorMessage = 'Error interno del servidor';
-        let statusCode = 500;
-
-        if (error.code === 21211) {
-            errorMessage = 'Número telefónico inválido';
-            statusCode = 400;
-        } else if (error.code === 21408) {
-            errorMessage = 'No tienes permisos para enviar SMS a este número';
-            statusCode = 403;
-        } else if (error.code === 21610) {
-            errorMessage = 'El número ha bloqueado los mensajes SMS';
-            statusCode = 400;
-        } else if (error.code === 21612) {
-            errorMessage = 'No se puede enviar SMS a números landline (fijos)';
-            statusCode = 400;
-        } else if (error.message.includes('Authentication Error')) {
-            errorMessage = 'Error de autenticación con el servicio de SMS';
-            statusCode = 500;
-        }
-
-        return {
-            statusCode: statusCode,
-            headers,
-            body: JSON.stringify({
-                success: false,
-                error: errorMessage
-            })
-        };
-    }
-};
-
-// Limpiar cache cada 24 horas
-function cleanupOldCache() {
-    const now = Date.now();
-    const twentyFourHours = 24 * 60 * 60 * 1000;
-    
-    Object.keys(global.messageStatusCache).forEach(sid => {
-        const messageTime = new Date(global.messageStatusCache[sid].timestamp).getTime();
-        if (now - messageTime > twentyFourHours) {
-            console.log(`🧹 Limpiando cache antiguo: ${sid}`);
-            delete global.messageStatusCache[sid];
-        }
-    });
-}
+                note:
