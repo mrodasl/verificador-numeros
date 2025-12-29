@@ -1,21 +1,23 @@
 {
-  "name": "verificador-numeros",
+  "name": "sistema-mensajeria-oim",
   "version": "1.0.0",
-  "description": "Sistema de verificación de números telefónicos para instituciones gubernamentales",
+  "description": "Sistema de envío de mensajes SMS para OIM Guatemala",
   "main": "index.html",
   "scripts": {
-    "build": "echo 'Build completo'"
+    "build": "echo 'Build completo'",
+    "dev": "echo 'Modo desarrollo - usar Netlify Dev'"
   },
   "dependencies": {
     "twilio": "^4.0.0"
   },
   "keywords": [
-    "verificacion",
     "sms",
     "twilio",
     "guatemala",
-    "institucion"
+    "oim",
+    "mensajeria",
+    "verificacion"
   ],
-  "author": "Tu Institución",
+  "author": "OIM Guatemala",
   "license": "MIT"
 }
