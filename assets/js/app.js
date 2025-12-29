@@ -64,6 +64,9 @@ function initializeApp() {
     
     // Configurar event listeners
     setupEventListeners();
+    
+    // Inicializar editor de mensajes (NUEVA FUNCIÓN)
+    initializeMessageEditor();
 }
 
 function initializeUsers() {
@@ -131,6 +134,148 @@ function setupEventListeners() {
         numbersInput.addEventListener('input', updateNumberCount);
         console.log('✅ Event listener de números configurado');
     }
+}
+
+// ========== EDITOR DE MENSAJES - NUEVAS FUNCIONES ==========
+
+function initializeMessageEditor() {
+    console.log('✍️ Inicializando editor de mensajes...');
+    
+    const messageInput = document.getElementById('messageInput');
+    if (!messageInput) {
+        console.warn('⚠️ Editor de mensajes no encontrado en el DOM');
+        return;
+    }
+    
+    // Configurar contador inicial
+    updateMessageCounter();
+    updateMessagePreview();
+    
+    // Event listeners para el editor
+    messageInput.addEventListener('input', function() {
+        updateMessageCounter();
+        updateMessagePreview();
+    });
+    
+    // Checkboxes del editor
+    const includeWhatsApp = document.getElementById('includeWhatsApp');
+    const includeOIM = document.getElementById('includeOIM');
+    
+    if (includeWhatsApp) {
+        includeWhatsApp.addEventListener('change', updateMessagePreview);
+    }
+    
+    if (includeOIM) {
+        includeOIM.addEventListener('change', updateMessagePreview);
+    }
+    
+    console.log('✅ Editor de mensajes inicializado correctamente');
+}
+
+function updateMessageCounter() {
+    const messageInput = document.getElementById('messageInput');
+    if (!messageInput) return;
+    
+    const text = messageInput.value;
+    const totalChars = text.length;
+    
+    // Calcular segmentos SMS (160 caracteres por segmento GSM, 70 para Unicode)
+    const segments = calculateSMSSegments(text);
+    const remaining = 160 - (totalChars % 160);
+    const remainingForDisplay = remaining === 160 ? 160 : remaining % 160;
+    
+    // Actualizar contadores
+    const charCountElement = document.getElementById('charCount');
+    const segmentCountElement = document.getElementById('segmentCount');
+    const totalCharsElement = document.getElementById('totalChars');
+    
+    if (charCountElement) charCountElement.textContent = remainingForDisplay;
+    if (segmentCountElement) segmentCountElement.textContent = `${segments} segmento${segments !== 1 ? 's' : ''} SMS`;
+    if (totalCharsElement) totalCharsElement.textContent = `${totalChars} caracteres`;
+    
+    // Cambiar color según límite
+    if (charCountElement) {
+        charCountElement.classList.remove('safe', 'warning', 'danger');
+        
+        if (remainingForDisplay > 20) {
+            charCountElement.classList.add('safe');
+        } else if (remainingForDisplay > 0 && remainingForDisplay <= 20) {
+            charCountElement.classList.add('warning');
+        } else if (remainingForDisplay <= 0) {
+            charCountElement.classList.add('danger');
+        }
+    }
+}
+
+function calculateSMSSegments(text) {
+    // Detectar si hay caracteres Unicode (emojis, acentos, etc.)
+    const hasUnicode = /[^\x00-\x7F\u00A0-\u00FF]/.test(text);
+    const maxCharsPerSegment = hasUnicode ? 70 : 160;
+    
+    return Math.ceil(text.length / maxCharsPerSegment);
+}
+
+function updateMessagePreview() {
+    const previewElement = document.getElementById('messagePreview');
+    if (!previewElement) return;
+    
+    let message = document.getElementById('messageInput').value;
+    
+    // Aplicar opciones
+    const includeOIM = document.getElementById('includeOIM')?.checked;
+    const includeWhatsApp = document.getElementById('includeWhatsApp')?.checked;
+    
+    // Agregar prefijo OIM si está marcado
+    if (includeOIM && !message.startsWith('OIM:')) {
+        message = 'OIM: ' + message;
+    }
+    
+    // Agregar enlace WhatsApp si está marcado
+    if (includeWhatsApp) {
+        if (!message.includes('https://wa.me/50239359960')) {
+            message += '\n\n💬 Escríbenos: https://wa.me/50239359960';
+        }
+    }
+    
+    // Calcular segmentos del mensaje final
+    const segments = calculateSMSSegments(message);
+    
+    // Mostrar en vista previa con formato
+    previewElement.innerHTML = message.replace(/\n/g, '<br>') + 
+        `<br><br><small class="segment-indicator">${segments} segmento${segments !== 1 ? 's' : ''} SMS</small>`;
+}
+
+function getFinalMessage() {
+    const messageInput = document.getElementById('messageInput');
+    if (!messageInput) {
+        // Mensaje por defecto si no hay editor
+        return 'OIM: ¡Bienvenido a casa! Si buscas apoyo o información, escríbenos a https://wa.me/50239359960';
+    }
+    
+    let message = messageInput.value.trim();
+    
+    // Aplicar opciones
+    const includeOIM = document.getElementById('includeOIM')?.checked;
+    const includeWhatsApp = document.getElementById('includeWhatsApp')?.checked;
+    
+    // Agregar prefijo OIM si está marcado
+    if (includeOIM && !message.startsWith('OIM:')) {
+        message = 'OIM: ' + message;
+    }
+    
+    // Agregar enlace WhatsApp si está marcado
+    if (includeWhatsApp) {
+        if (!message.includes('https://wa.me/50239359960')) {
+            message += '\n\n💬 Escríbenos: https://wa.me/50239359960';
+        }
+    }
+    
+    // Asegurar que no esté vacío
+    if (!message.trim()) {
+        message = 'OIM: ¡Bienvenido a casa! Si buscas apoyo o información, escríbenos a https://wa.me/50239359960';
+    }
+    
+    return message.trim();
 }
 
 // ========== FUNCIONES DE AUTENTICACIÓN MEJORADAS ==========
@@ -412,6 +557,9 @@ function showApp() {
     if (emailInput) emailInput.value = '';
     if (passwordInput) passwordInput.value = '';
     
+    // Inicializar editor de mensajes si está disponible
+    initializeMessageEditor();
+    
     console.log('✅ Aplicación principal mostrada correctamente');
 }
 
@@ -509,6 +657,18 @@ async function processNumbers() {
         return;
     }
     
+    // Validar mensaje personalizado
+    const finalMessage = getFinalMessage();
+    const segments = calculateSMSSegments(finalMessage);
+    
+    if (segments > 3) {
+        if (!confirm(`⚠️ El mensaje tiene ${segments} segmentos SMS (costo elevado).\n\n¿Deseas continuar?`)) {
+            return;
+        }
+    }
+    
+    console.log(`✍️ Mensaje personalizado a enviar (${segments} segmentos):`, finalMessage);
+    
     // Iniciar procesamiento
     appState.isProcessing = true;
     appState.results = [];
@@ -525,6 +685,7 @@ async function processNumbers() {
     updateResultsCount(0, 0, numbers.length);
     
     console.log(`🔨 Iniciando procesamiento de ${numbers.length} números`);
+    console.log(`📝 Con mensaje de ${finalMessage.length} caracteres (${segments} segmentos)`);
     
     // Procesar cada número
     for (let i = 0; i < numbers.length; i++) {
@@ -541,8 +702,8 @@ async function processNumbers() {
         try {
             console.log(`📤 Enviando verificación para: ${number}`);
             
-            // Enviar solicitud al backend
-            const result = await sendVerificationRequest(number);
+            // Enviar solicitud al backend con mensaje personalizado
+            const result = await sendVerificationRequest(number, finalMessage);
             
             if (result.success && result.messageSid) {
                 console.log(`✅ SMS creado para ${number}, SID: ${result.messageSid}, Estado inicial: ${result.initialStatus}`);
@@ -557,7 +718,9 @@ async function processNumbers() {
                     messageSid: result.messageSid,
                     initialStatus: result.initialStatus,
                     timestamp: new Date().toISOString(),
-                    user: appState.currentUser.email
+                    user: appState.currentUser.email,
+                    messageSegments: segments,
+                    messageLength: finalMessage.length
                 });
             } else {
                 // Error inmediato
@@ -621,6 +784,52 @@ async function processNumbers() {
     setTimeout(() => {
         showFinalSummary();
     }, 5000);
+}
+
+// FUNCIÓN MODIFICADA: Envío de verificación con mensaje personalizado
+async function sendVerificationRequest(phoneNumber, customMessage = null) {
+    const backendUrl = '/.netlify/functions/send-sms';
+    
+    try {
+        console.log(`🌐 Enviando solicitud MEJORADA a backend para: ${phoneNumber}`);
+        
+        const requestBody = {
+            number: phoneNumber,
+            user: appState.currentUser.email
+        };
+        
+        // Agregar mensaje personalizado si está disponible
+        if (customMessage) {
+            requestBody.message = customMessage;
+        }
+        
+        const response = await fetch(backendUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody)
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Error del servidor: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log(`📨 Respuesta MEJORADA del backend para ${phoneNumber}:`, {
+            success: result.success,
+            messageSid: result.messageSid,
+            initialStatus: result.initialStatus
+        });
+        return result;
+        
+    } catch (error) {
+        console.error('❌ Error en la solicitud MEJORADA:', error);
+        return {
+            success: false,
+            error: 'No se pudo conectar con el servicio de verificación'
+        };
+    }
 }
 
 // FUNCIÓN MEJORADA: Verificación en tiempo real del estado del mensaje
@@ -759,179 +968,4 @@ function updateLiveCounters() {
 // Determinar si un estado es final (no cambiará) - VERSIÓN MEJORADA
 function isFinalStatus(status) {
     const finalStatuses = [
-        'delivered',      // Entregado ✓
-        'undelivered',    // No entregado ✓ (ESTE ES EL QUE FALTA)
-        'failed',         // Fallado
-        'canceled'        // Cancelado
-    ];
-    return finalStatuses.includes(status);
-}
-
-// Actualizar la interfaz con el estado real - VERSIÓN CORREGIDA
-function updateMessageStatusInUI(phoneNumber, status, messageSid, resultItem) {
-    const statusMap = {
-        'queued': { class: 'processing', text: '⏳ En cola de envío...', emoji: '⏳' },
-        'sending': { class: 'processing', text: '📤 Enviando a operador...', emoji: '📤' },
-        'sent': { class: 'processing', text: '✅ Enviado al operador', emoji: '✅' },
-        'delivered': { class: 'success', text: '📱 ENTREGADO al dispositivo', emoji: '📱' },
-        'undelivered': { class: 'error', text: '❌ NO ENTREGADO - Número inactivo/apagado', emoji: '❌' }, // ESTADO CRÍTICO
-        'failed': { class: 'error', text: '🚫 FALLADO - Error de red/operador', emoji: '🚫' },
-        'timeout': { class: 'error', text: '⏰ Timeout - No se pudo verificar estado final', emoji: '⏰' },
-        'sent_timeout': { class: 'error', text: '❌ NO ENTREGADO - Timeout después de múltiples intentos', emoji: '❌' }, // NUEVO ESTADO
-        'sent_no_final_confirmation': { class: 'processing', text: '🔄 Enviado - Verificando estado final...', emoji: '🔄' }
-    };
-    
-    const statusInfo = statusMap[status] || { 
-        class: 'processing', 
-        text: `Estado: ${status}`, 
-        emoji: '❓' 
-    };
-    
-    resultItem.className = `result-item ${statusInfo.class}`;
-    resultItem.innerHTML = `
-        <div class="result-content">
-            <strong>${statusInfo.emoji} ${phoneNumber}</strong>
-            <span class="result-detail">${statusInfo.text}</span>
-            <small>SID: ${messageSid} | Estado: ${status}</small>
-        </div>
-    `;
-}
-
-function createResultItem(number, status, message) {
-    const item = document.createElement('div');
-    item.className = `result-item ${status}`;
-    item.innerHTML = `
-        <div class="result-content">
-            <strong>${status === 'processing' ? '⏳' : ''} ${number}</strong>
-            <span class="result-detail">${message}</span>
-        </div>
-    `;
-    return item;
-}
-
-// FUNCIÓN MEJORADA: Envío de verificación con manejo de estados
-async function sendVerificationRequest(phoneNumber) {
-    const backendUrl = '/.netlify/functions/send-sms';
-    
-    try {
-        console.log(`🌐 Enviando solicitud MEJORADA a backend para: ${phoneNumber}`);
-        const response = await fetch(backendUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                number: phoneNumber,
-                user: appState.currentUser.email
-            })
-        });
-        
-        if (!response.ok) {
-            throw new Error(`Error del servidor: ${response.status}`);
-        }
-        
-        const result = await response.json();
-        console.log(`📨 Respuesta MEJORADA del backend para ${phoneNumber}:`, {
-            success: result.success,
-            messageSid: result.messageSid,
-            initialStatus: result.initialStatus
-        });
-        return result;
-        
-    } catch (error) {
-        console.error('❌ Error en la solicitud MEJORADA:', error);
-        return {
-            success: false,
-            error: 'No se pudo conectar con el servicio de verificación'
-        };
-    }
-}
-
-function updateResultsCount(success, error, total) {
-    document.getElementById('totalCount').textContent = total;
-    document.getElementById('successCount').textContent = success;
-    document.getElementById('errorCount').textContent = error;
-}
-
-function showCompletionMessage(success, error, pending = 0) {
-    const resultsList = document.getElementById('resultsList');
-    
-    // Eliminar mensaje de completado anterior si existe
-    const existingCompletionMsg = document.querySelector('.completion-message');
-    if (existingCompletionMsg) {
-        existingCompletionMsg.remove();
-    }
-    
-    const completionMsg = document.createElement('div');
-    completionMsg.className = 'result-item success completion-message';
-    
-    let message = `Entregados: ${success} | Fallidos: ${error}`;
-    if (pending > 0) {
-        message += ` | Pendientes: ${pending}`;
-    }
-    
-    completionMsg.innerHTML = `
-        <div class="result-content">
-            <strong>🎉 Proceso completado</strong>
-            <span class="result-detail">
-                ${message} | 
-                <button onclick="exportResults()" style="background: none; border: none; color: #007bff; text-decoration: underline; cursor: pointer;">
-                    Exportar resultados
-                </button>
-            </span>
-        </div>
-    `;
-    resultsList.appendChild(completionMsg);
-}
-
-// ========== FUNCIONES DE EXPORTACIÓN ==========
-
-function exportResults() {
-    if (appState.results.length === 0) {
-        alert('No hay resultados para exportar.');
-        return;
-    }
-    
-    // Crear CSV
-    let csv = 'Número,Estado Final,MessageSID,Error,Timestamp,Usuario\n';
-    
-    appState.results.forEach(result => {
-        const estado = result.success === true ? 'ENTREGADO' : 
-                      result.success === false ? 'FALLADO' : 'PENDIENTE';
-        const messageSid = result.messageSid || 'N/A';
-        const error = result.error ? `"${result.error.replace(/"/g, '""')}"` : 'N/A';
-        const estadoFinal = result.finalStatus || result.initialStatus || 'Desconocido';
-        
-        csv += `"${result.number}",${estado},${messageSid},${error},${result.timestamp},"${result.user}"\n`;
-    });
-    
-    // Descargar archivo
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    
-    link.setAttribute('href', url);
-    link.setAttribute('download', `verificacion_numeros_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-}
-
-// Manejo de errores global
-window.addEventListener('error', function(e) {
-    console.error('Error global:', e.error);
-});
-
-// Exportar para uso global
-window.appState = appState;
-window.processNumbers = processNumbers;
-window.exportResults = exportResults;
-window.login = login;
-window.logout = logout;
-window.showAdminPanel = showAdminPanel;
-window.hideAdminPanel = hideAdminPanel;
-window.addNewUser = addNewUser;
-window.deleteUser = deleteUser;
-window.updateSessionTimeout = updateSessionTimeout;
+        'delivered',
