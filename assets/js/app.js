@@ -5,6 +5,7 @@ const APP_CONFIG = {
     maxNumbersPerBatch: 50,
     delayBetweenRequests: 500,
     sessionTimeout: 30, // minutos
+    maxMessageLength: 160, // caracteres por segmento
     // CONFIGURACIÓN MEJORADA: Más tiempo para verificación
     statusCheckConfig: {
         initialDelay: 5000, // 5 segundos para primera verificación
@@ -19,14 +20,15 @@ let appState = {
     currentUser: null,
     results: [],
     isProcessing: false,
-    inactivityTimer: null
+    inactivityTimer: null,
+    currentMessage: ''
 };
 
-// Usuario SUPER ADMIN por defecto (tú)
+// Usuario SUPER ADMIN por defecto
 const SUPER_ADMIN = {
-    email: 'mrodas@iom.int',
-    password: '130028',
-    name: 'Administrador Principal',
+    email: 'admin@oim.org.gt',
+    password: 'admin123',
+    name: 'Administrador OIM',
     role: 'superadmin',
     department: 'TI',
     createdAt: new Date().toISOString()
@@ -131,6 +133,60 @@ function setupEventListeners() {
         numbersInput.addEventListener('input', updateNumberCount);
         console.log('✅ Event listener de números configurado');
     }
+    
+    // Contador de caracteres para mensaje
+    const messageInput = document.getElementById('messageInput');
+    if (messageInput) {
+        messageInput.addEventListener('input', updateMessageCounter);
+        console.log('✅ Event listener de mensaje configurado');
+    }
+}
+
+// ========== SISTEMA DE MENSAJERÍA MEJORADO ==========
+
+function updateMessageCounter() {
+    const messageInput = document.getElementById('messageInput');
+    if (!messageInput) return;
+    
+    const message = messageInput.value;
+    const charCount = message.length;
+    const maxChars = APP_CONFIG.maxMessageLength;
+    
+    // Calcular segmentos (cada 160 caracteres = 1 segmento)
+    const segments = Math.ceil(charCount / maxChars);
+    
+    // Actualizar contadores
+    const charCountElement = document.getElementById('charCount');
+    const segmentCountElement = document.getElementById('segmentCount');
+    
+    if (charCountElement) {
+        charCountElement.textContent = charCount;
+        
+        // Cambiar color según el límite
+        if (charCount > maxChars) {
+            charCountElement.style.color = '#e53e3e';
+        } else if (charCount > maxChars * 0.8) {
+            charCountElement.style.color = '#dd6b20';
+        } else {
+            charCountElement.style.color = '#38a169';
+        }
+    }
+    
+    if (segmentCountElement) {
+        segmentCountElement.textContent = segments;
+        
+        // Cambiar color según segmentos
+        if (segments > 3) {
+            segmentCountElement.style.color = '#e53e3e';
+        } else if (segments > 1) {
+            segmentCountElement.style.color = '#dd6b20';
+        } else {
+            segmentCountElement.style.color = '#38a169';
+        }
+    }
+    
+    // Guardar mensaje en estado
+    appState.currentMessage = message;
 }
 
 // ========== FUNCIONES DE AUTENTICACIÓN MEJORADAS ==========
@@ -349,7 +405,7 @@ function addNewUser() {
         password: password,
         name: name,
         role: role,
-        department: 'Institución',
+        department: 'OIM Guatemala',
         createdAt: new Date().toISOString()
     };
 
@@ -366,7 +422,7 @@ function addNewUser() {
 }
 
 function deleteUser(email) {
-    if (email === 'mrodas@iom.int') {
+    if (email === 'admin@oim.org.gt') {
         showError('No se puede eliminar al Super Administrador');
         return;
     }
@@ -412,6 +468,9 @@ function showApp() {
     if (emailInput) emailInput.value = '';
     if (passwordInput) passwordInput.value = '';
     
+    // Inicializar contador de mensaje
+    updateMessageCounter();
+    
     console.log('✅ Aplicación principal mostrada correctamente');
 }
 
@@ -422,18 +481,6 @@ function showNotification(message, type = 'info') {
     const notification = document.createElement('div');
     notification.className = `notification ${type}`;
     notification.textContent = message;
-    notification.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        padding: 15px 20px;
-        background: ${type === 'success' ? '#d4edda' : type === 'error' ? '#f8d7da' : type === 'warning' ? '#fff3cd' : '#d1ecf1'};
-        color: ${type === 'success' ? '#155724' : type === 'error' ? '#721c24' : type === 'warning' ? '#856404' : '#0c5460'};
-        border: 1px solid ${type === 'success' ? '#c3e6cb' : type === 'error' ? '#f5c6cb' : type === 'warning' ? '#ffeaa7' : '#bee5eb'};
-        border-radius: 5px;
-        z-index: 10000;
-        max-width: 300px;
-    `;
     
     document.body.appendChild(notification);
     
@@ -473,10 +520,10 @@ function updateNumberCount() {
     
     // Validar límite
     if (count > APP_CONFIG.maxNumbersPerBatch) {
-        document.getElementById('numberCount').style.color = '#dc3545';
+        document.getElementById('numberCount').style.color = '#e53e3e';
         document.getElementById('numberCount').textContent += ` (Máximo: ${APP_CONFIG.maxNumbersPerBatch})`;
     } else {
-        document.getElementById('numberCount').style.color = '#28a745';
+        document.getElementById('numberCount').style.color = '#38a169';
     }
 }
 
@@ -498,9 +545,15 @@ async function processNumbers() {
     
     const input = document.getElementById('numbersInput').value;
     const numbers = parsePhoneNumbers(input);
+    const message = document.getElementById('messageInput').value.trim();
     
     if (numbers.length === 0) {
         alert('Por favor ingresa al menos un número telefónico válido de Guatemala (+502).');
+        return;
+    }
+    
+    if (!message) {
+        alert('Por favor escribe un mensaje para enviar.');
         return;
     }
     
@@ -509,13 +562,21 @@ async function processNumbers() {
         return;
     }
     
+    // Calcular segmentos del mensaje
+    const segments = Math.ceil(message.length / APP_CONFIG.maxMessageLength);
+    if (segments > 3) {
+        if (!confirm(`El mensaje está dividido en ${segments} segmentos (más costoso). ¿Deseas continuar?`)) {
+            return;
+        }
+    }
+    
     // Iniciar procesamiento
     appState.isProcessing = true;
     appState.results = [];
     
     const processBtn = document.getElementById('processBtn');
     processBtn.disabled = true;
-    processBtn.textContent = `Procesando ${numbers.length} números...`;
+    processBtn.textContent = `Enviando a ${numbers.length} contactos...`;
     
     // Preparar interfaz de resultados
     const resultsList = document.getElementById('resultsList');
@@ -524,7 +585,8 @@ async function processNumbers() {
     // Inicializar contadores a CERO
     updateResultsCount(0, 0, numbers.length);
     
-    console.log(`🔨 Iniciando procesamiento de ${numbers.length} números`);
+    console.log(`🔨 Iniciando envío a ${numbers.length} números`);
+    console.log(`📝 Mensaje (${message.length} chars, ${segments} segmentos):`, message);
     
     // Procesar cada número
     for (let i = 0; i < numbers.length; i++) {
@@ -532,17 +594,17 @@ async function processNumbers() {
         
         // Mostrar progreso
         const progress = Math.round(((i + 1) / numbers.length) * 100);
-        processBtn.textContent = `Procesando... ${progress}% (${i + 1}/${numbers.length})`;
+        processBtn.textContent = `Enviando... ${progress}% (${i + 1}/${numbers.length})`;
         
         // Crear elemento de resultado
-        const resultItem = createResultItem(number, 'processing', 'Enviando verificación...');
+        const resultItem = createResultItem(number, 'processing', 'Preparando envío...');
         resultsList.appendChild(resultItem);
         
         try {
-            console.log(`📤 Enviando verificación para: ${number}`);
+            console.log(`📤 Enviando mensaje a: ${number}`);
             
-            // Enviar solicitud al backend
-            const result = await sendVerificationRequest(number);
+            // Enviar solicitud al backend con el mensaje personalizado
+            const result = await sendVerificationRequest(number, message);
             
             if (result.success && result.messageSid) {
                 console.log(`✅ SMS creado para ${number}, SID: ${result.messageSid}, Estado inicial: ${result.initialStatus}`);
@@ -557,7 +619,9 @@ async function processNumbers() {
                     messageSid: result.messageSid,
                     initialStatus: result.initialStatus,
                     timestamp: new Date().toISOString(),
-                    user: appState.currentUser.email
+                    user: appState.currentUser.email,
+                    message: message.substring(0, 50) + (message.length > 50 ? '...' : ''),
+                    segments: segments
                 });
             } else {
                 // Error inmediato
@@ -575,7 +639,8 @@ async function processNumbers() {
                     success: false,
                     error: result.error,
                     timestamp: new Date().toISOString(),
-                    user: appState.currentUser.email
+                    user: appState.currentUser.email,
+                    message: message.substring(0, 50) + (message.length > 50 ? '...' : '')
                 });
                 
                 // ACTUALIZAR CONTADORES INMEDIATAMENTE
@@ -597,7 +662,8 @@ async function processNumbers() {
                 success: false,
                 error: error.message,
                 timestamp: new Date().toISOString(),
-                user: appState.currentUser.email
+                user: appState.currentUser.email,
+                message: message.substring(0, 50) + (message.length > 50 ? '...' : '')
             });
             
             // ACTUALIZAR CONTADORES INMEDIATAMENTE
@@ -612,7 +678,7 @@ async function processNumbers() {
     
     // Finalizar procesamiento
     processBtn.disabled = false;
-    processBtn.textContent = 'Iniciar Verificación';
+    processBtn.textContent = '📤 Enviar Mensajes';
     appState.isProcessing = false;
     
     console.log(`🏁 Procesamiento completado. Total resultados: ${appState.results.length}`);
@@ -810,7 +876,7 @@ function createResultItem(number, status, message) {
 }
 
 // FUNCIÓN MEJORADA: Envío de verificación con manejo de estados
-async function sendVerificationRequest(phoneNumber) {
+async function sendVerificationRequest(phoneNumber, message) {
     const backendUrl = '/.netlify/functions/send-sms';
     
     try {
@@ -822,7 +888,8 @@ async function sendVerificationRequest(phoneNumber) {
             },
             body: JSON.stringify({
                 number: phoneNumber,
-                user: appState.currentUser.email
+                user: appState.currentUser.email,
+                message: message // ENVIAR MENSAJE PERSONALIZADO
             })
         });
         
@@ -842,7 +909,7 @@ async function sendVerificationRequest(phoneNumber) {
         console.error('❌ Error en la solicitud MEJORADA:', error);
         return {
             success: false,
-            error: 'No se pudo conectar con el servicio de verificación'
+            error: 'No se pudo conectar con el servicio de mensajería'
         };
     }
 }
@@ -872,10 +939,10 @@ function showCompletionMessage(success, error, pending = 0) {
     
     completionMsg.innerHTML = `
         <div class="result-content">
-            <strong>🎉 Proceso completado</strong>
+            <strong>🎉 Proceso de envío completado</strong>
             <span class="result-detail">
                 ${message} | 
-                <button onclick="exportResults()" style="background: none; border: none; color: #007bff; text-decoration: underline; cursor: pointer;">
+                <button onclick="exportResults()" style="background: none; border: none; color: #3182ce; text-decoration: underline; cursor: pointer; font-weight: 500;">
                     Exportar resultados
                 </button>
             </span>
@@ -893,7 +960,7 @@ function exportResults() {
     }
     
     // Crear CSV
-    let csv = 'Número,Estado Final,MessageSID,Error,Timestamp,Usuario\n';
+    let csv = 'Número,Estado Final,MessageSID,Mensaje,Segmentos,Error,Timestamp,Usuario\n';
     
     appState.results.forEach(result => {
         const estado = result.success === true ? 'ENTREGADO' : 
@@ -901,8 +968,10 @@ function exportResults() {
         const messageSid = result.messageSid || 'N/A';
         const error = result.error ? `"${result.error.replace(/"/g, '""')}"` : 'N/A';
         const estadoFinal = result.finalStatus || result.initialStatus || 'Desconocido';
+        const mensaje = result.message ? `"${result.message.replace(/"/g, '""')}"` : 'N/A';
+        const segmentos = result.segments || '1';
         
-        csv += `"${result.number}",${estado},${messageSid},${error},${result.timestamp},"${result.user}"\n`;
+        csv += `"${result.number}",${estado},${messageSid},${mensaje},${segmentos},${error},${result.timestamp},"${result.user}"\n`;
     });
     
     // Descargar archivo
@@ -911,7 +980,7 @@ function exportResults() {
     const url = URL.createObjectURL(blob);
     
     link.setAttribute('href', url);
-    link.setAttribute('download', `verificacion_numeros_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `resultados_envio_${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
     
     document.body.appendChild(link);
@@ -935,3 +1004,4 @@ window.hideAdminPanel = hideAdminPanel;
 window.addNewUser = addNewUser;
 window.deleteUser = deleteUser;
 window.updateSessionTimeout = updateSessionTimeout;
+window.updateMessageCounter = updateMessageCounter;
