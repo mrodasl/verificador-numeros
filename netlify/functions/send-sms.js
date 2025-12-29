@@ -6,10 +6,11 @@ if (typeof global.messageStatusCache === 'undefined') {
 }
 
 exports.handler = async function(event, context) {
+    // CONFIGURACIÓN CON SENDER ID ALFANUMÉRICO "OIM" PARA GUATEMALA
     const TWILIO_CONFIG = {
         accountSid: process.env.TWILIO_ACCOUNT_SID,
         authToken: process.env.TWILIO_AUTH_TOKEN,
-        phoneNumber: process.env.TWILIO_PHONE_NUMBER
+        senderId: process.env.TWILIO_SENDER_ID || 'OIM' // Sender ID alfanumérico para Guatemala
     };
 
     const headers = {
@@ -111,7 +112,8 @@ exports.handler = async function(event, context) {
         const { number, user } = JSON.parse(event.body);
         const cleanedNumber = number.replace(/\s+/g, '');
         
-        console.log(`📤 Solicitud de verificación: ${cleanedNumber} por ${user}`);
+        console.log(`📤 Enviando SMS via Sender ID: ${TWILIO_CONFIG.senderId}`);
+        console.log(`👤 Destino: ${cleanedNumber} | Usuario: ${user}`);
 
         // Validaciones
         if (!cleanedNumber) {
@@ -122,19 +124,35 @@ exports.handler = async function(event, context) {
             };
         }
 
+        // Validar formato de número guatemalteco
         if (!cleanedNumber.startsWith('+502')) {
             return {
                 statusCode: 400,
                 headers,
-                body: JSON.stringify({ success: false, error: 'El número debe ser de Guatemala (+502)' })
+                body: JSON.stringify({ 
+                    success: false, 
+                    error: 'El número debe ser de Guatemala (formato: +502 XXXXXXXX)' 
+                })
+            };
+        }
+
+        // Validar longitud del número
+        if (cleanedNumber.length < 12 || cleanedNumber.length > 13) {
+            return {
+                statusCode: 400,
+                headers,
+                body: JSON.stringify({ 
+                    success: false, 
+                    error: 'Número inválido. Formato esperado: +502 XXXXXXXX' 
+                })
             };
         }
 
         // Inicializar Twilio
         const client = new Twilio(TWILIO_CONFIG.accountSid, TWILIO_CONFIG.authToken);
 
-        // Mensaje de verificación
-        const verificationMessage = `¡Bienvenido a casa!`;
+        // MENSAJE MEJORADO - Más corto para mejor compatibilidad
+        const verificationMessage = `OIM: ¡Bienvenido a casa! Si buscas apoyo o información, escríbenos a https://wa.me/50239359960`;
 
         // Construir URL del webhook dinámicamente
         const webhookUrl = process.env.URL 
@@ -143,14 +161,16 @@ exports.handler = async function(event, context) {
 
         console.log('🔄 Webhook URL configurada:', webhookUrl);
 
-        // Enviar SMS con webhook para tracking
+        // ENVIAR SMS CON SENDER ID ALFANUMÉRICO "OIM"
         const message = await client.messages.create({
             body: verificationMessage,
-            from: TWILIO_CONFIG.phoneNumber,
+            from: TWILIO_CONFIG.senderId,  // ← SENDER ID ALFANUMÉRICO "OIM"
             to: cleanedNumber,
             statusCallback: webhookUrl,
-            // Forzar entrega más estricta
             validityPeriod: 120, // 2 minutos máximo de intento
+            // Parámetros específicos para Guatemala
+            smartEncoded: true, // Mejor encoding para caracteres especiales
+            forceDelivery: true // Forzar entrega
         });
 
         // Guardar en cache GLOBAL (compartido)
@@ -160,13 +180,14 @@ exports.handler = async function(event, context) {
             user: user,
             timestamp: new Date().toISOString(),
             initialStatus: message.status,
-            from: TWILIO_CONFIG.phoneNumber
+            from: TWILIO_CONFIG.senderId, // Guardar que se usó Sender ID
+            senderId: TWILIO_CONFIG.senderId // Referencia adicional
         };
 
         // Limpiar cache antiguo
         cleanupOldCache();
 
-        console.log(`✅ SMS creado: ${cleanedNumber}`);
+        console.log(`✅ SMS enviado via ${TWILIO_CONFIG.senderId} a ${cleanedNumber}`);
         console.log(`📝 SID: ${message.sid}, Estado inicial: ${message.status}`);
         console.log(`📊 Tamaño del cache: ${Object.keys(global.messageStatusCache).length}`);
 
@@ -177,20 +198,31 @@ exports.handler = async function(event, context) {
                 success: true,
                 messageSid: message.sid,
                 initialStatus: message.status,
+                senderId: TWILIO_CONFIG.senderId, // Informar qué Sender ID se usó
                 number: cleanedNumber,
                 user: user,
                 timestamp: new Date().toISOString(),
-                note: 'El estado puede cambiar. La aplicación verificará automáticamente.'
+                note: 'Mensaje enviado con Sender ID alfanumérico OIM'
             })
         };
 
     } catch (error) {
-        console.error('❌ Error enviando SMS:', error);
+        console.error('❌ Error enviando SMS con Sender ID:', error);
         
         let errorMessage = 'Error interno del servidor';
         let statusCode = 500;
 
-        if (error.code === 21211) {
+        // ERRORES ESPECÍFICOS DE SENDER ID
+        if (error.code === 21212) {
+            errorMessage = 'Sender ID "OIM" no válido o no aprobado para Guatemala';
+            statusCode = 400;
+        } else if (error.code === 21214) {
+            errorMessage = 'Sender ID demasiado largo (máx 11 caracteres)';
+            statusCode = 400;
+        } else if (error.code === 21611) {
+            errorMessage = 'Sender ID no soportado por el operador del destinatario';
+            statusCode = 400;
+        } else if (error.code === 21211) {
             errorMessage = 'Número telefónico inválido';
             statusCode = 400;
         } else if (error.code === 21408) {
@@ -203,8 +235,11 @@ exports.handler = async function(event, context) {
             errorMessage = 'No se puede enviar SMS a números landline (fijos)';
             statusCode = 400;
         } else if (error.message.includes('Authentication Error')) {
-            errorMessage = 'Error de autenticación con el servicio de SMS';
+            errorMessage = 'Error de autenticación con Twilio';
             statusCode = 500;
+        } else if (error.message.includes('Alpha Sender')) {
+            errorMessage = 'Problema con el Sender ID alfanumérico. Verifica que "OIM" esté aprobado.';
+            statusCode = 400;
         }
 
         return {
@@ -213,7 +248,9 @@ exports.handler = async function(event, context) {
             body: JSON.stringify({
                 success: false,
                 error: errorMessage,
-                twilioErrorCode: error.code
+                twilioErrorCode: error.code,
+                twilioErrorMessage: error.message,
+                suggestion: 'Verifica que el Sender ID "OIM" esté aprobado para Guatemala en Twilio Console'
             })
         };
     }
