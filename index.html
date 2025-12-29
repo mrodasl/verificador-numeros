@@ -3,25 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Verificador de Números - Institución</title>
+    <title>Verificador de Números - OIM Guatemala</title>
     <link rel="stylesheet" href="assets/css/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
     <!-- Login Simple -->
     <div id="loginContainer" class="container">
         <div class="login-box">
             <div class="logo">
-                <h2>🏢 Institución Gubernamental</h2>
+                <h2>🌐 OIM Guatemala</h2>
                 <p>Sistema de Verificación de Números Telefónicos</p>
             </div>
             
             <div class="login-form">
                 <h3>🔒 Acceso al Sistema</h3>
-                <p>Ingresa tus credenciales institucionales:</p>
+                <p>Ingresa tus credenciales:</p>
                 
                 <div class="input-group">
-                    <label>Correo Institucional:</label>
-                    <input type="email" id="emailInput" placeholder="tu.correo@institucion.gob.gt">
+                    <label>Correo Electrónico:</label>
+                    <input type="email" id="emailInput" placeholder="tu.correo@oim.org.gt">
                 </div>
                 
                 <div class="input-group">
@@ -33,8 +34,7 @@
                 <div id="loginError" class="error-message"></div>
                 
                 <div class="demo-accounts">
-                    <p><strong>Cuenta Super Admin:</strong></p>
-                    <p>mrodas@iom.int / 130028</p>
+                    <p><strong>Contactar al administrador para acceso</strong></p>
                 </div>
             </div>
         </div>
@@ -44,7 +44,7 @@
     <div id="appContainer" class="container hidden">
         <header class="app-header">
             <div class="header-info">
-                <h1>📱 Verificador de Números Telefónicos</h1>
+                <h1>📱 Sistema de Mensajería - OIM Guatemala</h1>
                 <p>Usuario: <span id="currentUser"></span> | 
                    <button onclick="showAdminPanel()" id="adminBtn" class="btn-admin hidden">👥 Admin</button>
                    <button onclick="logout()" class="btn-logout">Cerrar Sesión</button>
@@ -53,11 +53,12 @@
         </header>
 
         <main class="app-main">
+            <!-- Primera fila: Ingreso de números -->
             <div class="input-section">
                 <div class="card">
-                    <h3>📋 Ingreso de Números</h3>
+                    <h3>📋 Ingreso de Números Telefónicos</h3>
                     <div class="input-group">
-                        <label><strong>Números a verificar (uno por línea):</strong></label>
+                        <label><strong>Números a contactar (uno por línea):</strong></label>
                         <textarea id="numbersInput" rows="8" placeholder="Ejemplo:
 +502 5555-5555
 +502 4444-4444
@@ -67,24 +68,51 @@
                             <span>Formato: +502 XXXXXXXX</span>
                         </div>
                     </div>
-                    
-                    <button onclick="processNumbers()" id="processBtn" class="btn-process">Iniciar Verificación</button>
                 </div>
             </div>
 
-            <div class="results-section">
-                <div class="card">
-                    <h3>📊 Resultados de Verificación</h3>
-                    <div class="results-header">
-                        <span>Total: <span id="totalCount">0</span></span>
-                        <span>Exitosos: <span id="successCount">0</span></span>
-                        <span>Fallidos: <span id="errorCount">0</span></span>
-                        <button onclick="exportResults()" class="btn-export">📥 Exportar Resultados</button>
+            <!-- Segunda fila: Composición de mensaje y resultados -->
+            <div class="row-2">
+                <!-- Columna izquierda: Composición de mensaje -->
+                <div class="message-section">
+                    <div class="card">
+                        <h3>💬 Composición del Mensaje</h3>
+                        <div class="input-group">
+                            <label><strong>Texto del mensaje SMS:</strong></label>
+                            <textarea id="messageInput" rows="6" placeholder="Escribe aquí el mensaje a enviar..."></textarea>
+                            <div class="message-info">
+                                <div class="char-counter">
+                                    <span id="charCount">0</span>/160 caracteres
+                                </div>
+                                <div class="segments-info">
+                                    Segmentos: <span id="segmentCount">1</span>
+                                    <span class="segment-note">(cada 160 caracteres = 1 segmento)</span>
+                                </div>
+                                <div class="message-tips">
+                                    <small>💡 Máximo 160 caracteres por segmento. Incluye espacios y caracteres especiales.</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <button onclick="processNumbers()" id="processBtn" class="btn-process">📤 Enviar Mensajes</button>
                     </div>
-                    
-                    <div id="resultsList" class="results-list">
-                        <div class="empty-state">
-                            <p>Los resultados aparecerán aquí después de la verificación</p>
+                </div>
+
+                <!-- Columna derecha: Resultados -->
+                <div class="results-section">
+                    <div class="card">
+                        <h3>📊 Resultados del Envío</h3>
+                        <div class="results-header">
+                            <span>Total: <span id="totalCount">0</span></span>
+                            <span>Exitosos: <span id="successCount">0</span></span>
+                            <span>Fallidos: <span id="errorCount">0</span></span>
+                            <button onclick="exportResults()" class="btn-export">📥 Exportar Resultados</button>
+                        </div>
+                        
+                        <div id="resultsList" class="results-list">
+                            <div class="empty-state">
+                                <p>Los resultados del envío aparecerán aquí</p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -112,8 +140,8 @@
                     <div class="admin-section">
                         <h4>Agregar Nuevo Usuario</h4>
                         <div class="input-group">
-                            <input type="email" id="newUserEmail" placeholder="correo@institucion.gt">
-                            <input type="text" id="newUserPassword" placeholder="Número de empleado (ej: 130028)">
+                            <input type="email" id="newUserEmail" placeholder="correo@oim.org.gt">
+                            <input type="text" id="newUserPassword" placeholder="Número de empleado">
                             <input type="text" id="newUserName" placeholder="Nombre completo">
                             <select id="newUserRole">
                                 <option value="user">Usuario Normal</option>
