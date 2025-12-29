@@ -67,8 +67,50 @@
                             <span>Formato: +502 XXXXXXXX</span>
                         </div>
                     </div>
+
+                    <!-- ✨ NUEVA SECCIÓN: EDITOR DE MENSAJES -->
+                    <div class="message-editor-section">
+                        <h4>✍️ Personalizar Mensaje</h4>
+                        
+                        <div class="message-input-group">
+                            <label><strong>Mensaje a enviar:</strong></label>
+                            <textarea id="messageInput" rows="4" maxlength="1600" 
+                                      placeholder="Escribe tu mensaje aquí...">
+¡Bienvenido a casa! 🌟 
+
+Si estás buscando oportunidades, apoyo o información para tu reintegración en Guatemala, estamos aquí para ayudarte.
+
+💬 Escríbenos directamente: 
+https://wa.me/50239359960?text=Hola,%20quiero%20más%20información%20sobre%20los%20servicios%20disponibles</textarea>
+                            
+                            <div class="message-counter">
+                                <span id="charCount">160</span>/160 caracteres restantes
+                                <span id="segmentCount">1 segmento SMS</span>
+                                <span id="totalChars">0 caracteres totales</span>
+                            </div>
+                            
+                            <div class="message-options">
+                                <label>
+                                    <input type="checkbox" id="includeWhatsApp" checked>
+                                    Incluir enlace WhatsApp
+                                </label>
+                                <label>
+                                    <input type="checkbox" id="includeOIM" checked>
+                                    Incluir prefijo "OIM:"
+                                </label>
+                            </div>
+                            
+                            <div class="message-preview">
+                                <h5>👁️ Vista Previa del Mensaje:</h5>
+                                <div id="messagePreview" class="preview-box">
+                                    <!-- Vista previa dinámica -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- FIN NUEVA SECCIÓN -->
                     
-                    <button onclick="processNumbers()" id="processBtn" class="btn-process">Iniciar Verificación</button>
+                    <button onclick="processNumbers()" id="processBtn" class="btn-process">🚀 Iniciar Verificación</button>
                 </div>
             </div>
 
