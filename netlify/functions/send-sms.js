@@ -99,7 +99,7 @@ exports.handler = async function(event, context) {
         }
     }
 
-    // Envío de SMS (POST original)
+    // Envío de SMS (POST original) con mensaje personalizado
     if (event.httpMethod !== 'POST') {
         return {
             statusCode: 405,
@@ -109,11 +109,12 @@ exports.handler = async function(event, context) {
     }
 
     try {
-        const { number, user } = JSON.parse(event.body);
+        const { number, user, message } = JSON.parse(event.body);
         const cleanedNumber = number.replace(/\s+/g, '');
         
         console.log(`📤 Enviando SMS via Sender ID: ${TWILIO_CONFIG.senderId}`);
         console.log(`👤 Destino: ${cleanedNumber} | Usuario: ${user}`);
+        console.log(`📝 Mensaje (${message.length} caracteres): ${message}`);
 
         // Validaciones
         if (!cleanedNumber) {
@@ -121,6 +122,14 @@ exports.handler = async function(event, context) {
                 statusCode: 400,
                 headers,
                 body: JSON.stringify({ success: false, error: 'Número requerido' })
+            };
+        }
+
+        if (!message || message.trim() === '') {
+            return {
+                statusCode: 400,
+                headers,
+                body: JSON.stringify({ success: false, error: 'Mensaje requerido' })
             };
         }
 
@@ -151,9 +160,6 @@ exports.handler = async function(event, context) {
         // Inicializar Twilio
         const client = new Twilio(TWILIO_CONFIG.accountSid, TWILIO_CONFIG.authToken);
 
-        // MENSAJE MEJORADO - Más corto para mejor compatibilidad
-        const verificationMessage = `OIM: ¡Bienvenido a casa! Si buscas apoyo o información, escríbenos a https://wa.me/50239359960`;
-
         // Construir URL del webhook dinámicamente
         const webhookUrl = process.env.URL 
             ? `${process.env.URL}/.netlify/functions/sms-status`
@@ -161,9 +167,9 @@ exports.handler = async function(event, context) {
 
         console.log('🔄 Webhook URL configurada:', webhookUrl);
 
-        // ENVIAR SMS CON SENDER ID ALFANUMÉRICO "OIM"
-        const message = await client.messages.create({
-            body: verificationMessage,
+        // ENVIAR SMS CON SENDER ID ALFANUMÉRICO "OIM" Y MENSAJE PERSONALIZADO
+        const twilioMessage = await client.messages.create({
+            body: message, // ← MENSAJE PERSONALIZADO DEL USUARIO
             from: TWILIO_CONFIG.senderId,  // ← SENDER ID ALFANUMÉRICO "OIM"
             to: cleanedNumber,
             statusCallback: webhookUrl,
@@ -174,12 +180,13 @@ exports.handler = async function(event, context) {
         });
 
         // Guardar en cache GLOBAL (compartido)
-        global.messageStatusCache[message.sid] = {
-            status: message.status, // Estado inicial: 'queued', 'sent', etc.
+        global.messageStatusCache[twilioMessage.sid] = {
+            status: twilioMessage.status, // Estado inicial: 'queued', 'sent', etc.
             number: cleanedNumber,
             user: user,
+            message: message.substring(0, 100), // Guardar parte del mensaje
             timestamp: new Date().toISOString(),
-            initialStatus: message.status,
+            initialStatus: twilioMessage.status,
             from: TWILIO_CONFIG.senderId, // Guardar que se usó Sender ID
             senderId: TWILIO_CONFIG.senderId // Referencia adicional
         };
@@ -188,7 +195,7 @@ exports.handler = async function(event, context) {
         cleanupOldCache();
 
         console.log(`✅ SMS enviado via ${TWILIO_CONFIG.senderId} a ${cleanedNumber}`);
-        console.log(`📝 SID: ${message.sid}, Estado inicial: ${message.status}`);
+        console.log(`📝 SID: ${twilioMessage.sid}, Estado inicial: ${twilioMessage.status}`);
         console.log(`📊 Tamaño del cache: ${Object.keys(global.messageStatusCache).length}`);
 
         return {
@@ -196,11 +203,13 @@ exports.handler = async function(event, context) {
             headers,
             body: JSON.stringify({
                 success: true,
-                messageSid: message.sid,
-                initialStatus: message.status,
+                messageSid: twilioMessage.sid,
+                initialStatus: twilioMessage.status,
                 senderId: TWILIO_CONFIG.senderId, // Informar qué Sender ID se usó
                 number: cleanedNumber,
                 user: user,
+                messageLength: message.length,
+                segments: Math.ceil(message.length / 160), // Calcular segmentos
                 timestamp: new Date().toISOString(),
                 note: 'Mensaje enviado con Sender ID alfanumérico OIM'
             })
@@ -239,6 +248,9 @@ exports.handler = async function(event, context) {
             statusCode = 500;
         } else if (error.message.includes('Alpha Sender')) {
             errorMessage = 'Problema con el Sender ID alfanumérico. Verifica que "OIM" esté aprobado.';
+            statusCode = 400;
+        } else if (error.code === 21614) {
+            errorMessage = 'Mensaje muy largo. El SMS debe tener máximo 160 caracteres por segmento.';
             statusCode = 400;
         }
 
